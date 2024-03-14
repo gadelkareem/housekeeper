@@ -1,0 +1,35 @@
+---
+
+log_level: INFO
+tmdb_api_key: 
+dry_run: false
+hd_media_file_size: 300000000 # 300 MB
+min_dir_size: 100000000 # 100 MB
+
+# Use export ENV=mac to use the mac configuration
+mac:
+  deleted_media_dir: /path_to_media/deleted_media
+  unsorted_media_dirs:
+    - /path_to_media/unsorted
+    - /path_to_media/download/seeding
+  media_dirs:
+    series: /path_to_media/series
+    movies: /path_to_media/movies/new
+    documentaries: /path_to_media/movies/documentary
+    unsorted: /path_to_media/unsorted
+    arabic: /path_to_media/movies/arabic
+    seeding: /path_to_media/download/seeding
+
+nas:
+  deleted_media_dir: /path_to_media/deleted_media
+  unsorted_media_dirs:
+    - /path_to_media/m/unsorted
+    - /path_to_media/m/download/seeding
+  media_dirs:
+    series: /path_to_media/m/series
+    movies: /path_to_media/m/movies/new
+    documentaries: /path_to_media/m/movies/documentary
+    unsorted: /path_to_media/m/unsorted
+    arabic: /path_to_media/m/movies/arabic
+    seeding: /path_to_media/m/download/seeding
+
