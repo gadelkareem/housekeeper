@@ -17,10 +17,11 @@ class Sorter:
         for media_dir in self.unsorted_media_dirs:
             for filepath in glob.iglob(glob.escape(media_dir) + '/**', recursive=True):
                 if not (os.path.exists(filepath) and Utils.is_video_file(filepath) and Utils.is_big_file(filepath)):
-                    self.log.debug(f"Ignoring: {filepath}")
+                    # self.log.debug(f"Ignoring: {filepath}")
                     continue
                 classifier = Classifier(filepath)
                 self.threaded.run(classifier.classify_move)
+
         self.threaded.wait()
 
         self.log.info(f"Done")

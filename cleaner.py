@@ -7,7 +7,6 @@ from lib.classifier import Classifier
 from lib.logger import Logger
 from lib.utils import Utils
 from lib.threaded import Threaded
-from lib.config import config
 
 
 class Cleaner:
@@ -18,11 +17,23 @@ class Cleaner:
         self.small_files = []
         self.threaded = Threaded(5)
         self.media = {}
-        self.dubbed_regex = re.compile(r".*[^a-z](dubbed|dual|multi)[^a-z]+.*", re.IGNORECASE)
+
+    def move_trailers(self):
+        self.log.info(f"Moving trailers from {len(self.dirs)} directories...")
+        for media_dir in self.dirs:
+            for file in glob.iglob(glob.escape(media_dir) + '/**', recursive=True):
+                filename = os.path.basename(file)
+                if ("trailer" in str.lower(filename) and '@eadir' not in str.lower(file) and
+                        Utils.is_video_file(file) and '/trailers/' not in str.lower(file)):
+                    dst = Utils.media_dir(file)
+                    trailer_dir = Utils.trailers_dir(dst)
+                    self.threaded.run(Utils.move, file, os.path.join(trailer_dir, filename))
+        self.threaded.wait()
+        self.log.info(f"Trailers moved.")
 
     def collect_media_info(self):
         files = []
-        for d in config.final_media_dirs:
+        for d in self.dirs:
             if not os.path.exists(d):
                 self.log.error(f"Directory {d} does not exist.")
                 continue
@@ -62,21 +73,18 @@ class Cleaner:
             self.log.info(f"Ranking: {title} with {len(v)} files")
             i = 0
             for f, r in v.items():
-                if i == 0:
-                    self.log.debug(f"Keeping: {f}")
-                    i += 1
+                i += 1
+                if i == 1:
+                    self.log.debug(f"Keeping: {r['old_path']}")
                     continue
-                if i < 3:
-                    self.log.debug(f"Moving: {f} to extras")
-                    parent_dir = os.path.dirname(r['old_path'])
-                    extras_dir = os.path.join(parent_dir, 'extras')
-                    if not os.path.exists(extras_dir):
-                        os.makedirs(extras_dir)
-                    new_path = os.path.join(extras_dir, os.path.basename(f))
-                    self.threaded.run(Utils.move, f, new_path)
-                    i += 1
+                if i < 4:
+                    self.log.debug(f"Moving: {r['old_path']} to extras")
+                    parent_dir = Utils.media_dir(r['old_path'])
+                    extras_dir = Utils.extras_dir(parent_dir)
+                    new_path = os.path.join(extras_dir, os.path.basename(r['old_path']))
+                    self.threaded.run(Utils.move, r['old_path'], new_path)
                     continue
-                self.threaded.run(Utils.delete, f)
+                self.threaded.run(Utils.delete, r['old_path'])
         self.threaded.wait()
         return
 
@@ -91,16 +99,15 @@ class Cleaner:
         for media_dir in self.dirs:
             for f in os.listdir(media_dir):
                 file_path = os.path.join(media_dir, f)
-                if not os.path.exists(file_path) or self.is_ignore_file(file_path):
-                    self.log.debug(f"Ignoring: {file_path}")
-                    continue
                 self.threaded.run(self.set_files, file_path)
         self.threaded.wait()
 
         all_files = self.stats()
 
         for f in all_files:
-            Utils.delete(f['path'])
+            # Utils.delete(f['path'])
+            self.threaded.run(Utils.delete, f['path'])
+        self.threaded.wait()
         self.log.info(f"Cleanup Done.")
 
     def is_ignore_file(self, file_path, ignore_extras=True):
@@ -120,6 +127,9 @@ class Cleaner:
         )
 
     def set_files(self, file_path):
+        if self.is_ignore_file(file_path) or not os.path.exists(file_path):
+            self.log.debug(f"Ignoring: {file_path}")
+            return
         if os.path.isdir(file_path):
             size = Utils.size(file_path, False)
             if size < 50000000:  # 50MB

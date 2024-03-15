@@ -34,9 +34,11 @@ def sort():
 @cli.command()
 def clean():
     """Delete empty media directories and low quality media files."""
-    cleaner = Cleaner(config.unsorted_media_dirs)
-    # cleaner.clean()
-    Cleaner(config.final_media_dirs).delete_low_quality()
+    cleaner = Cleaner(config.media_dirs.values())
+    cleaner.clean()
+    cleaner = Cleaner(config.final_media_dirs)
+    cleaner.move_trailers()
+    cleaner.delete_low_quality()
 
 
 cli.add_command(sort)

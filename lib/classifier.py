@@ -28,6 +28,7 @@ REMUX = 50
 FOUR_K = 40
 HD = 30
 CD = 10
+LOW_QUALITY = -50
 
 
 class Classifier:
@@ -37,6 +38,10 @@ class Classifier:
         self.log = Logger(__name__)
         self.filepath = file_path
         self.filename = os.path.basename(file_path)
+        self.filename_no_ext = os.path.splitext(self.filename)[0]
+        # replace dots and underscores with spaces
+        self.filename_no_ext = re.sub(r'[\._]', ' ', self.filename_no_ext)
+        self.extension = os.path.splitext(self.filename)[1]
         self.parent_dir = os.path.dirname(file_path) if os.path.isfile(file_path) else file_path
         if self.parent_dir in list(config.media_dirs.values()):
             self.parent_dir = None
@@ -48,7 +53,7 @@ class Classifier:
         self.tmdb_lib.API_KEY = config.tmdb_api_key
 
         self.info = {
-            'title': os.path.splitext(self.filename)[0],
+            'title': self.filename_no_ext,
             'year': None,
             'kind': 'unsorted',
             'genres': set(),
@@ -56,8 +61,22 @@ class Classifier:
             'new_dir': None,
             'old_path': file_path,
             'languages': {'english'},
+            'hdr': False,
+            'resolution': None,
+            'quality': None,
+            'episode': None,
+            'season': None,
+            'codec': None,
+            'group': None,
+            'excess': None,
+            'container': None,
+            'rank': 0,
+            'dubbed': False,
+            'threed': False,
+            'cd': False,
+            'ufc': False,
+            'remux': False
         }
-        pass
 
     def extract_title_year(self, filename):
         # extract title and year from string such as "Central Intelligence (2016)" using regex
@@ -68,6 +87,10 @@ class Classifier:
             self.log.debug(f"Extracted title and year: {match.groups()}")
             self.info['title'] = match.group(1)
             self.info['year'] = match.group(2)
+        elif self.parent_dir and filename != os.path.basename(self.parent_dir):
+            self.info['title'] = os.path.basename(self.parent_dir)
+            return self.extract_title_year(self.info['title'])
+
         return self.info
 
     @staticmethod
@@ -79,12 +102,19 @@ class Classifier:
             rank += DUBBED
         if info['threed']:
             rank += THREED
+        if info['remux']:
+            rank += REMUX
         if info['resolution'] == '2160p':
             rank += FOUR_K
         if info['resolution'] == '1080p':
             rank += HD
         if info['cd']:
             rank += CD
+        if (info['resolution'] == '720p' or info['resolution'] == '480p' or
+                info['resolution'] == '360p' or info['resolution'] == '240p' or
+                info['resolution'] == '144p' or info['resolution'] == '240p'):
+            rank += LOW_QUALITY
+
         return rank
 
     def set_info_from_title(self, filename):
@@ -92,8 +122,7 @@ class Classifier:
         result = PTN.parse(filename)
 
         self.log.debug(f"PTN result: {result}")
-        # Utils.debug(result)
-        if not result:
+        if not result or not result.get('title', None) or self.filename_no_ext in result['title']:
             return self.extract_title_year(filename)
         if result.get('year', None):
             self.info['year'] = result['year']
@@ -101,18 +130,11 @@ class Classifier:
             self.info['title'] = result['title']
         if result.get('season', None):
             self.info['kind'] = 'series'
-        elif result.get('resolution', None) or result.get('quality', None):
-            self.info['kind'] = 'movie'
 
         if not self.info['year'] and self.info['kind'] != 'series':
             self.extract_title_year(filename)
 
-        self.info['hdr'] = result.get('hdr', False) or (hdr_regex.match(filename) is not None)
-        self.info['dubbed'] = (dubbed_regex.match(filename) is not None)
-        self.info['threed'] = (threed_regex.match(filename) is not None)
-        self.info['cd'] = (cd_regex.match(filename) is not None)
-        self.info['ufc'] = (ufc_regex.match(filename) is not None)
-        self.info['remux'] = (remux_regex.match(filename) is not None)
+        self.info['hdr'] = result.get('hdr', False)
         self.info['resolution'] = result.get('resolution', None)
         self.info['quality'] = result.get('quality', None)
         self.info['episode'] = result.get('episode', None)
@@ -121,17 +143,47 @@ class Classifier:
         self.info['group'] = result.get('group', None)
         self.info['excess'] = result.get('excess', None)
         self.info['container'] = result.get('container', None)
-        self.info['rank'] = self.rank_file(self.info)
 
         self.log.debug(f"PTN info: {self.info}")
         return self.info
 
+    def extract_info(self, filename):
+        if not self.info.get('hdr', None):
+            self.info['hdr'] = (hdr_regex.match(filename) is not None)
+        self.info['dubbed'] = (dubbed_regex.match(filename) is not None)
+        self.info['threed'] = (threed_regex.match(filename) is not None)
+        self.info['cd'] = (cd_regex.match(filename) is not None)
+        self.info['ufc'] = (ufc_regex.match(filename) is not None)
+        self.info['remux'] = (remux_regex.match(filename) is not None)
+        self.info['rank'] = self.rank_file(self.info)
+
+    def cleanup_title(self):
+        # if title has text that looks like 'S01E01' or 'S0241E0231' then split it and take the first part if not empty otherwise take the second part
+        if self.info['title']:
+            match = re.match(r'^(.*?)S(\d+)E(\d+)(.*)$', self.info['title'])
+            if match:
+                self.info['title'] = match.group(1)
+                self.info['season'] = int(match.group(2))
+                self.info['episode'] = int(match.group(3))
+                if not self.info['title']:
+                    self.info['title'] = match.group(4)
+            self.info['title'] = self.info['title'].strip()
+            # if title has the year ex: 2024 then remove it and set it as the year
+            match = re.match(r'^(.*?)[^a-z]+?(\d{4}).*$', self.info['title'], re.IGNORECASE)
+            if match:
+                self.info['title'] = match.group(1)
+                self.info['year'] = match.group(2)
+
     def classify(self):
         self.log.debug(f"Classifying {self.filepath}")
-        if not self.info['year'] and self.info['kind'] != 'series':
-            self.set_info_from_title(self.filename)
+        self.set_info_from_title(self.filename)
 
+        self.extract_info(self.filename)
+        self.cleanup_title()
+
+        # @todo: if media is not found, try to find it using AI API
         media = self.find_media(self.info)
+
         self.log.debug(f"Media: {media}")
         if media:
             self.log.debug(f"Media: {media}")
@@ -150,7 +202,7 @@ class Classifier:
         self.set_media_dir()
         self.set_new_dir()
 
-        self.log.info(f"Classified: {self.info}")
+        self.log.debug(f"Classified: {self.info}")
 
         return self
 
@@ -158,6 +210,9 @@ class Classifier:
         self.classify()
         # if not os.path.exists(self.info['new_dir']):
         #     Utils.make_dirs(self.info['new_dir'])
+
+        if not self.info['new_dir']:
+            raise ValueError(f"No new dir provided. {self.info}")
 
         if self.parent_dir:
             Utils.move(self.parent_dir + '/', self.info['new_dir'])
@@ -172,6 +227,9 @@ class Classifier:
                     Utils.move(os.path.join(parent_dir, f), os.path.join(self.info['new_dir'], f))
 
     def set_new_dir(self):
+        if not self.info['title']:
+            raise ValueError(f"No title provided. {self.info}")
+
         title = f"{self.info['title']} ({self.info['year']})" if self.info.get('year', None) else self.info['title']
         d = os.path.join(self.info['media_dir'], title)
         Utils.make_dirs(d)
@@ -243,11 +301,11 @@ class Classifier:
                 media = search.results[0]
                 year = datetime.strptime(media['release_date'], '%Y-%m-%d').year if 'release_date' in media else ''
                 return {
-                    'title': media['title'],
+                    'title': media.get('title', None) or media.get('name', None),
                     'year': year,
-                    'kind': 'movie' if media['media_type'] == 'movie' else 'series',
-                    'genres': self.tmdb_genres(media['genre_ids']),
-                    'languages': [media['original_language']]
+                    'kind': 'movie' if media.get('media_type', None) == 'movie' else 'series',
+                    'genres': self.tmdb_genres(media.get('genre_ids', [])),
+                    'languages': [media.get('original_language', 'en')]
                 }
         except HTTPError as e:
             if e.code in [429, 503, 403] and retry < MAX_RETRIES:
@@ -266,11 +324,11 @@ class Classifier:
                 media = self.cinemagoer.get_movie(results[0].movieID)
                 self.log.debug(f"Found IMDB media: {media.__dict__}")
                 return {
-                    'title': media['title'],
-                    'year': media['year'],
-                    'kind': 'movie' if media['kind'] == 'movie' else 'series',
+                    'title': media.get('title', None),
+                    'year': media.get('year', None),
+                    'kind': 'movie' if media.get('kind', None) == 'movie' else 'series',
                     'genres': media.get('genres', None),
-                    'languages': media['languages'],
+                    'languages': media.get('languages', None),
                 }
         except HTTPError as e:
             if e.code in [429, 503, 403] and retry < MAX_RETRIES:
