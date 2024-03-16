@@ -7,6 +7,8 @@ Usage:
 """
 import os
 import click
+
+from lib.utils import Utils
 from lib.config import config
 from sorter import Sorter
 from cleaner import Cleaner
@@ -15,7 +17,8 @@ from cleaner import Cleaner
 @click.group()
 @click.option('--debug/--no-debug', default=False, is_flag=True)
 @click.option('--dry-run', default=False, is_flag=True)
-def cli(debug=False, dry_run=False):
+@click.pass_context
+def cli(ctx, debug=False, dry_run=False):
     """Media Manager CLI"""
     if debug:
         click.echo('Debug mode is enabled')
@@ -23,6 +26,14 @@ def cli(debug=False, dry_run=False):
     if dry_run:
         click.echo('Dry run is enabled')
         config.dry_run = True
+    ctx.call_on_close(_on_close)
+
+
+def _on_close():
+    # This function will be called after every command execution
+    if config.fix_permissions_dir:
+        click.echo(f"Fixing permissions for {config.fix_permissions_dir}")
+        Utils.fix_permissions(config.fix_permissions_dir)
 
 
 @cli.command()
@@ -35,6 +46,7 @@ def sort():
 def clean():
     """Delete empty media directories and low quality media files."""
     cleaner = Cleaner(config.media_dirs.values())
+    cleaner.flatten_media_dirs()
     cleaner.clean()
     cleaner = Cleaner(config.final_media_dirs)
     cleaner.move_trailers()

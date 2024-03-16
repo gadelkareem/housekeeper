@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 MAX_RETRIES = 5
 
 cd_regex = re.compile(r".*[^a-z]+cd\d+[^\d]+.*", re.IGNORECASE)
-ufc_regex = re.compile(r".*/ufc.*", re.IGNORECASE)
+ufc_regex = re.compile(r"^ufc.*", re.IGNORECASE)
 dubbed_regex = re.compile(r".*[^a-z](dubbed|dual|multi)[^a-z]+.*", re.IGNORECASE)
 threed_regex = re.compile(r".*[^a-z]3d[^a-z]+.*", re.IGNORECASE)
 hdr_regex = re.compile(r".*[^a-z]+hdr[^a-z]+.*", re.IGNORECASE)
@@ -156,6 +156,9 @@ class Classifier:
         self.info['ufc'] = (ufc_regex.match(filename) is not None)
         self.info['remux'] = (remux_regex.match(filename) is not None)
         self.info['rank'] = self.rank_file(self.info)
+        match = ufc_regex.match(filename)
+        if match:
+            self.info['kind'] = 'series'
 
     def cleanup_title(self):
         # if title has text that looks like 'S01E01' or 'S0241E0231' then split it and take the first part if not empty otherwise take the second part
@@ -208,14 +211,12 @@ class Classifier:
 
     def classify_move(self):
         self.classify()
-        # if not os.path.exists(self.info['new_dir']):
-        #     Utils.make_dirs(self.info['new_dir'])
 
         if not self.info['new_dir']:
             raise ValueError(f"No new dir provided. {self.info}")
 
         if self.parent_dir:
-            Utils.move(self.parent_dir + '/', self.info['new_dir'])
+            Utils.move(self.parent_dir, self.info['new_dir'])
         else:
             Utils.move(self.filepath, self.info['new_path'])
             filename_no_ext = os.path.splitext(self.filename)[0]
@@ -231,11 +232,12 @@ class Classifier:
             raise ValueError(f"No title provided. {self.info}")
 
         title = f"{self.info['title']} ({self.info['year']})" if self.info.get('year', None) else self.info['title']
+        Utils.clean_path(title)
+
         d = os.path.join(self.info['media_dir'], title)
         Utils.make_dirs(d)
         self.log.debug(f"New dir: {d}")
         self.info['new_dir'] = d
-        # remove [website.com] from the beginning of filename (case-insensitive)
 
         new_filename = Utils.clean_path(self.filename)
         self.info['new_path'] = os.path.join(d, new_filename)

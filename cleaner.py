@@ -3,6 +3,7 @@ import logging
 import os
 import re
 
+from lib.config import config
 from lib.classifier import Classifier
 from lib.logger import Logger
 from lib.utils import Utils
@@ -40,7 +41,8 @@ class Cleaner:
             for media_dir in os.listdir(d):
                 media_path = os.path.join(d, media_dir)
 
-                if not os.path.exists(media_path) or self.is_ignore_file(media_path) or not os.path.isdir(media_path):
+                if (not media_path or not os.path.exists(media_path) or
+                        self.is_ignore_file(media_path) or not os.path.isdir(media_path)):
                     self.log.debug(f"Ignoring: {media_path}")
                     continue
                 for filename in glob.iglob(glob.escape(media_path) + '/**', recursive=True):
@@ -94,12 +96,14 @@ class Cleaner:
             self.flatten_one_level(media_dir)
 
     def clean(self):
-        self.flatten_media_dirs()
         self.log.info(f"Cleaning {len(self.dirs)} directories...")
         for media_dir in self.dirs:
             for f in os.listdir(media_dir):
                 file_path = os.path.join(media_dir, f)
-                self.threaded.run(self.set_files, file_path)
+                self.threaded.run(self.find_deletable_files, file_path)
+                if os.path.isdir(file_path):
+                    for nf in os.listdir(file_path):
+                        self.threaded.run(self.find_deletable_files, os.path.join(file_path, nf))
         self.threaded.wait()
 
         all_files = self.stats()
@@ -110,7 +114,8 @@ class Cleaner:
         self.threaded.wait()
         self.log.info(f"Cleanup Done.")
 
-    def is_ignore_file(self, file_path, ignore_extras=True):
+    @staticmethod
+    def is_ignore_file(file_path, ignore_extras=True):
         f = str.lower(file_path)
         fn = os.path.basename(f)
         return (
@@ -126,18 +131,35 @@ class Cleaner:
                 str.startswith(fn, '.smbdelete')
         )
 
-    def set_files(self, file_path):
-        if self.is_ignore_file(file_path) or not os.path.exists(file_path):
+    @staticmethod
+    def is_ignore_flattening(file_path):
+        f = str.lower(file_path)
+        return any(substring in f for substring in
+                   ['@eadir', 'plex', 'trailer', '/subs', '/extras'])
+
+    @staticmethod
+    def is_deletable_dir(file_path):
+        f = str.lower(file_path)
+        return not any(substring in f for substring in
+                       ['@eadir', 'plex', 'trailer', '/subs', '/extras', '/season'])
+
+    @staticmethod
+    def is_deletable_file(file_path):
+        f = str.lower(file_path)
+        return not f.endswith(('.jpg', '.jpeg', '.png', '.nfo', '.srt', '.sub'))
+
+    def find_deletable_files(self, file_path):
+        if not os.path.exists(file_path):
             self.log.debug(f"Ignoring: {file_path}")
             return
-        if os.path.isdir(file_path):
+        if os.path.isdir(file_path) and self.is_deletable_dir(file_path):
             size = Utils.size(file_path, False)
-            if size < 50000000:  # 50MB
+            if size < config.min_dir_size:
                 self.log.debug(f"Found empty dir size[{Utils.convert_size(size)}]: {file_path}")
                 self.empty_dirs.append({'path': file_path, 'size': size})
-        if os.path.isfile(file_path):
+        if os.path.isfile(file_path) and self.is_deletable_file(file_path) and self.is_deletable_dir(file_path):
             size = Utils.size(file_path, False)
-            if size < 50000000:  # 50MB
+            if size < config.min_file_size:
                 self.log.debug(f"Found small file size[{Utils.convert_size(size)}]: {file_path}")
                 self.small_files.append({'path': file_path, 'size': size})
 
@@ -163,18 +185,21 @@ class Cleaner:
         for rootdir in os.listdir(media_dir):
             rootdir_path = os.path.join(media_dir, rootdir)
 
-            if not os.path.isdir(rootdir_path) or self.is_ignore_file(rootdir_path) or rootdir_path == media_dir:
+            if not os.path.isdir(rootdir_path) or rootdir_path == media_dir:
                 continue
 
             for file in glob.iglob(glob.escape(rootdir_path) + '/**', recursive=True):
-                if self.is_ignore_file(file) or '/season' in str.lower(file):
+                if self.is_ignore_flattening(file) or '/season' in str.lower(file):
                     continue
 
                 if os.path.isdir(file) or file == os.path.join(rootdir_path, os.path.basename(file)):
                     continue
 
+                self.log.debug(f"Found nested file: {file} under {rootdir_path}")
                 # Making sure the new filename is unique in case of duplicates
-                destination = Utils.new_unique_file(rootdir_path, file)
+                destination = os.path.join(rootdir_path, os.path.basename(file))
+                if os.path.exists(destination):
+                    destination = Utils.new_unique_file(rootdir_path, file)
 
                 self.threaded.run(Utils.move, file, destination)
         self.threaded.wait()

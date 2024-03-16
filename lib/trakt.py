@@ -12,6 +12,7 @@ import tmdbsimple as tmdb
 from .nfo import NFO
 from urllib.error import HTTPError
 
+#@todo https://github.com/fuzeman/trakt.py
 
 class Trakt:
 

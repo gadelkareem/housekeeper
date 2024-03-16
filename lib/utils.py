@@ -27,19 +27,27 @@ class Utils:
         if stop_app:
             exit()
 
+    # fix permissions on nas
+    @staticmethod
+    def fix_permissions(file_path):
+        return os.system(f"find {file_path} -exec synoacltool -enforce-inherit {{}} \;")
+
     @staticmethod
     def move(src, dst):
         if src == dst:
             log.debug(f"Skipping move: {src} to {dst}")
             return
         if not src or not dst:
-            log.error(f"Error: Invalid move: {src} to {dst}")
-            return
+            raise ValueError(f"Error: Invalid move: {src} to {dst}")
+
         if '@eadir' in str.lower(src) or '@eadir' in str.lower(dst):
-            log.warning(f"Skipping move: {src} to {dst}")
+            log.warning(f"Skipping move for system files: {src} to {dst}")
             return
 
-        if os.path.exists(dst):
+        if dst in config.media_dirs.values() or dst == config.deleted_media_dir:
+            raise ValueError(f"Destination {dst} is a media directory. Cannot move {src} here.")
+
+        if os.path.exists(dst) and os.path.isfile(dst):
             dst = Utils.new_unique_file(os.path.dirname(dst), dst)
 
         # create missing directories
@@ -55,7 +63,8 @@ class Utils:
                 if shutil.move(src, dst):
                     log.info(f"Moved {src} to {dst}")
                     if os.path.exists(src):
-                        os.remove(src)
+                        # delete file
+                        shutil.rmtree(src, ignore_errors=True)
                 else:
                     log.error(f"Error moving {src} to {dst}")
 
@@ -64,9 +73,12 @@ class Utils:
                 for f in os.listdir(src):
                     Utils.move(os.path.join(src, f), os.path.join(dst, f))
                 if os.path.exists(src) and not os.path.exists(dst):
-                    shutil.move(src, dst)
+                    try:
+                        shutil.move(src, dst)
+                    except:
+                        pass
                 if os.path.exists(src):
-                    os.rmdir(src)
+                    shutil.rmtree(src, ignore_errors=True)
 
         except Exception as e:
             log.error(f"Error moving {src} to {dst}. Error: " + repr(e))
@@ -108,11 +120,14 @@ class Utils:
             unique_filename = os.path.basename(file)
         else:
             unique_filename = os.path.dirname(file)
+
         count = 1
         while os.path.exists(os.path.join(dir, unique_filename)):
-            name, ext = os.path.splitext(file)
+            name, ext = os.path.splitext(unique_filename)
+            name = re.sub(r'[_\d]+$', '', name)
             unique_filename = f"{name}_{count}{ext}"
             count += 1
+
         return os.path.join(dir, unique_filename)
 
     @staticmethod

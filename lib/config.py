@@ -59,11 +59,19 @@ class Config:
 
     @property
     def hd_media_file_size(self):
-        return self.config['hd_media_file_size'] if 'hd_media_file_size' in self.config else 300000000 # 300MB
+        return self.config['hd_media_file_size'] if 'hd_media_file_size' in self.config else 300000000  # 300MB
+
+    @property
+    def fix_permissions_dir(self):
+        return self.config['fix_permissions_dir'] if 'fix_permissions_dir' in self.config else None
+
+    @property
+    def min_file_size(self):
+        return self.config['min_file_size'] if 'min_file_size' in self.config else 50000000  # 50MB
 
     @property
     def min_dir_size(self):
-        return self.config['min_dir_size'] if 'min_dir_size' in self.config else 100000000 # 100MB
+        return self.config['min_dir_size'] if 'min_dir_size' in self.config else 100000000  # 100MB
 
     @property
     def tmdb_api_key(self):
