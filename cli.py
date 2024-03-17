@@ -6,12 +6,16 @@ Usage:
     ./cli.py scan
 """
 import os
+import time
+
 import click
 
 from lib.utils import Utils
 from lib.config import config
 from sorter import Sorter
 from cleaner import Cleaner
+
+Utils.lock_app()
 
 
 @click.group()
@@ -31,9 +35,7 @@ def cli(ctx, debug=False, dry_run=False):
 
 def _on_close():
     # This function will be called after every command execution
-    if config.fix_permissions_dir:
-        click.echo(f"Fixing permissions for {config.fix_permissions_dir}")
-        Utils.fix_permissions(config.fix_permissions_dir)
+    click.echo('Closing...')
 
 
 @cli.command()
@@ -46,6 +48,7 @@ def sort():
 def clean():
     """Delete empty media directories and low quality media files."""
     cleaner = Cleaner(config.media_dirs.values())
+    cleaner.move_pre_seeded()
     cleaner.flatten_media_dirs()
     cleaner.clean()
     cleaner = Cleaner(config.final_media_dirs)

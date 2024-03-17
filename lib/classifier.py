@@ -20,6 +20,7 @@ dubbed_regex = re.compile(r".*[^a-z](dubbed|dual|multi)[^a-z]+.*", re.IGNORECASE
 threed_regex = re.compile(r".*[^a-z]3d[^a-z]+.*", re.IGNORECASE)
 hdr_regex = re.compile(r".*[^a-z]+hdr[^a-z]+.*", re.IGNORECASE)
 remux_regex = re.compile(r".*[^a-z]+remux[^a-z]+.*", re.IGNORECASE)
+series_regex = re.compile(r".+?[^a-z0-9]+S(\d+)(E\d+)?[^a-z0-9]+.*", re.IGNORECASE)
 
 HDR = 100
 DUBBED = 90
@@ -156,6 +157,14 @@ class Classifier:
         self.info['ufc'] = (ufc_regex.match(filename) is not None)
         self.info['remux'] = (remux_regex.match(filename) is not None)
         self.info['rank'] = self.rank_file(self.info)
+
+        if not self.info['season'] or not self.info['episode']:
+            match = series_regex.match(filename)
+            if match:
+                self.info['kind'] = 'series'
+                self.info['season'] = match.group(1)
+                self.info['episode'] = match.group(2)
+
         match = ufc_regex.match(filename)
         if match:
             self.info['kind'] = 'series'
@@ -299,7 +308,7 @@ class Classifier:
             search = self.tmdb_lib.Search()
             search.multi(query=title)
             if len(search.results) > 0:
-                self.log.info(f"Found TMDB {search.results}")
+                self.log.debug(f"Found TMDB {search.results}")
                 media = search.results[0]
                 year = datetime.strptime(media['release_date'], '%Y-%m-%d').year if 'release_date' in media else ''
                 return {

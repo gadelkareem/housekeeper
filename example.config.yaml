@@ -21,7 +21,7 @@ mac:
     seeding: /path_to_media/download/seeding
 
 nas:
-  fix_permissions_dir: /path_to_media/m
+  fix_nas_permissions: true
   deleted_media_dir: /path_to_media/deleted_media
   unsorted_media_dirs:
     - /path_to_media/m/unsorted

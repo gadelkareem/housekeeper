@@ -90,6 +90,23 @@ class Cleaner:
         self.threaded.wait()
         return
 
+    def move_pre_seeded(self):
+        if not config.pre_seeding_dir and config.seeding_dir:
+            self.log.info("Pre-seeding is not set.")
+            return
+        for f in os.listdir(config.pre_seeding_dir):
+            file_path = os.path.join(config.pre_seeding_dir, f)
+            if os.path.isfile(file_path):
+                self.threaded.run(Utils.move, file_path, os.path.join(config.seeding_dir, f))
+            else:
+                is_synced = True
+                for f1 in os.listdir(file_path):
+                    if f1.startswith('.'):
+                        is_synced = False
+                        break
+                if is_synced:
+                    self.threaded.run(Utils.move, file_path, os.path.join(config.seeding_dir, f))
+
     def flatten_media_dirs(self):
         self.log.info(f"Flattening {len(self.dirs)} directories...")
         for media_dir in self.dirs:
@@ -123,7 +140,7 @@ class Cleaner:
                 'plex' in f or
                 'trailer' in f or
                 '/subs' in f or
-                (ignore_extras and '/extras' in f) or
+                # (ignore_extras and '/extras' in f) or
                 str.endswith(f, '.subs') or
                 # str.startswith(fn, '.') or
                 str.endswith(f, '.meta') or
@@ -135,13 +152,13 @@ class Cleaner:
     def is_ignore_flattening(file_path):
         f = str.lower(file_path)
         return any(substring in f for substring in
-                   ['@eadir', 'plex', 'trailer', '/subs', '/extras'])
+                   ['@eadir', 'plex', 'trailer', '/subs'])# , '/extras'
 
     @staticmethod
     def is_deletable_dir(file_path):
         f = str.lower(file_path)
         return not any(substring in f for substring in
-                       ['@eadir', 'plex', 'trailer', '/subs', '/extras', '/season'])
+                       ['@eadir', 'plex', 'trailer', '/subs', '/season']) #, '/extras'
 
     @staticmethod
     def is_deletable_file(file_path):

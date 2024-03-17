@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
+import fcntl
 import glob
 import math
 import os
 import re
+import errno
 
 from .logger import Logger
 
@@ -12,11 +14,33 @@ import yaml
 import xml.etree.ElementTree as ET
 from .config import config
 from pathvalidate import sanitize_filepath
+from pathlib import Path
 
 log = Logger('utils')
+lockfile = None
 
 
 class Utils:
+
+    @staticmethod
+    def lock_app():
+        global lockfile
+        lock_file_path = f'/tmp/housekeeper.lock'
+        lockfile = open(lock_file_path, 'w')
+
+        try:
+            # Try to grab an exclusive lock on the file, raise error otherwise
+            fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+        except OSError as e:
+            # if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
+            #     return False
+            log.error("Another instance of the app is running. Exiting.")
+            exit()
+
+        else:
+            log.info(f"Lock acquired {lock_file_path}")
+            return True
 
     @staticmethod
     def debug(obj, pretty=True, stop_app=True):
@@ -30,7 +54,7 @@ class Utils:
     # fix permissions on nas
     @staticmethod
     def fix_permissions(file_path):
-        return os.system(f"find {file_path} -exec synoacltool -enforce-inherit {{}} \;")
+        return os.system(f"find '{file_path}' " + ' -exec synoacltool -enforce-inherit {} \;')
 
     @staticmethod
     def move(src, dst):
@@ -67,9 +91,7 @@ class Utils:
                         shutil.rmtree(src, ignore_errors=True)
                 else:
                     log.error(f"Error moving {src} to {dst}")
-
-                return
-            if os.path.isdir(src):
+            elif os.path.isdir(src):
                 for f in os.listdir(src):
                     Utils.move(os.path.join(src, f), os.path.join(dst, f))
                 if os.path.exists(src) and not os.path.exists(dst):
@@ -79,6 +101,11 @@ class Utils:
                         pass
                 if os.path.exists(src):
                     shutil.rmtree(src, ignore_errors=True)
+
+            if os.path.exists(dst):
+                if config.fix_nas_permissions:
+                    log.debug(f"Fixing permissions for {dst}")
+                    Utils.fix_permissions(dst)
 
         except Exception as e:
             log.error(f"Error moving {src} to {dst}. Error: " + repr(e))
