@@ -159,3 +159,4 @@ cython_debug/
 .idea/
 config.yaml
 .diskcache
+.pytrakt.json

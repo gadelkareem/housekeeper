@@ -3,11 +3,13 @@ import logging
 import os
 import re
 
+from lib.trakt_client import Trakt
 from lib.config import config
 from lib.classifier import Classifier
 from lib.logger import Logger
 from lib.utils import Utils
 from lib.threaded import Threaded
+from lib.nfo import NFO
 
 
 class Cleaner:
@@ -18,6 +20,19 @@ class Cleaner:
         self.small_files = []
         self.threaded = Threaded(5)
         self.media = {}
+
+    def fix_jellyfin_nfo(self):
+        if not config.jellyfin_nfo_fix:
+            return
+        self.log.info(f"Fixing jellyfin nfo files in {len(self.dirs)} directories...")
+        for media_dir in self.dirs:
+            for file in glob.iglob(glob.escape(media_dir) + '/**', recursive=True):
+                if file.endswith('.nfo'):
+                    n = NFO(file)
+                    n.fix_jellyfin_nfo()
+                    # self.threaded.run(n.fix_jellyfin_nfo)
+        self.threaded.wait()
+        self.log.info(f"Jellyfin nfo files fixed.")
 
     def move_trailers(self):
         self.log.info(f"Moving trailers from {len(self.dirs)} directories...")
@@ -61,31 +76,38 @@ class Cleaner:
             if not media_info or not media_info['title']:
                 self.log.error(f"Failed to get title for: {p}")
                 continue
-            title = media_info['title']
-            if title not in self.media:
-                self.media[title] = {}
-            key = f"{media_info['old_path']}_S{media_info['season']}_E{media_info['episode']}"
-            self.media[title][key] = media_info
+            key = f"{media_info['title']}_{media_info['year']}_S{media_info['season']}_E{media_info['episode']}"
+
+            if key not in self.media:
+                self.media[key] = []
+            self.media[key].append(media_info)
 
     def delete_low_quality(self):
         self.collect_media_info()
 
-        for title, v in self.media.items():
-            v = dict(sorted(v.items(), key=lambda item: item[1]['rank'], reverse=True))
-            self.log.info(f"Ranking: {title} with {len(v)} files")
+        for k, v in self.media.items():
+            v = sorted(v, key=lambda x: x['rank'])
+            self.log.info(f"Ranking: {k} with {len(v)} files")
             i = 0
-            for f, r in v.items():
+            for r in v:
+                if 'series' not in r['old_path']:
+                    continue
                 i += 1
                 if i == 1:
                     self.log.debug(f"Keeping: {r['old_path']}")
                     continue
                 if i < 4:
-                    self.log.debug(f"Moving: {r['old_path']} to extras")
                     parent_dir = Utils.media_dir(r['old_path'])
                     extras_dir = Utils.extras_dir(parent_dir)
                     new_path = os.path.join(extras_dir, os.path.basename(r['old_path']))
+                    # if 'series' in new_path:
+                    #     print('rankings')
+                    #     print(k, r['rank'])
+                    #     print(new_path)
+                    self.log.debug(f"Moving: {r['old_path']} to extras")
                     self.threaded.run(Utils.move, r['old_path'], new_path)
                     continue
+                self.log.debug(f"Deleting: {r['old_path']}")
                 self.threaded.run(Utils.delete, r['old_path'])
         self.threaded.wait()
         return
@@ -93,6 +115,9 @@ class Cleaner:
     def move_pre_seeded(self):
         if not config.pre_seeding_dir and config.seeding_dir:
             self.log.info("Pre-seeding is not set.")
+            return
+        if os.path.exists(os.path.join(config.pre_seeding_dir, '.transferring')):
+            self.log.info("Pre-seeding is in progress.")
             return
         for f in os.listdir(config.pre_seeding_dir):
             file_path = os.path.join(config.pre_seeding_dir, f)
@@ -111,6 +136,11 @@ class Cleaner:
         self.log.info(f"Flattening {len(self.dirs)} directories...")
         for media_dir in self.dirs:
             self.flatten_one_level(media_dir)
+
+    def move_watched(self):
+        trakt = Trakt()
+        trakt.move_to_watched()
+
 
     def clean(self):
         self.log.info(f"Cleaning {len(self.dirs)} directories...")
@@ -140,7 +170,7 @@ class Cleaner:
                 'plex' in f or
                 'trailer' in f or
                 '/subs' in f or
-                # (ignore_extras and '/extras' in f) or
+                (ignore_extras and '/extras' in f) or
                 str.endswith(f, '.subs') or
                 # str.startswith(fn, '.') or
                 str.endswith(f, '.meta') or
@@ -152,13 +182,13 @@ class Cleaner:
     def is_ignore_flattening(file_path):
         f = str.lower(file_path)
         return any(substring in f for substring in
-                   ['@eadir', 'plex', 'trailer', '/subs'])# , '/extras'
+                   ['@eadir', 'plex', 'trailer', '/subs', '/extras'])  #
 
     @staticmethod
     def is_deletable_dir(file_path):
         f = str.lower(file_path)
         return not any(substring in f for substring in
-                       ['@eadir', 'plex', 'trailer', '/subs', '/season']) #, '/extras'
+                       ['@eadir', 'plex', 'trailer', '/subs', '/season', '/extras'])  #
 
     @staticmethod
     def is_deletable_file(file_path):

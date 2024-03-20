@@ -74,6 +74,10 @@ class Config:
         return self.config['min_dir_size'] if 'min_dir_size' in self.config else 100000000  # 100MB
 
     @property
+    def jellyfin_nfo_fix(self):
+        return self.config['jellyfin_nfo_fix'] if 'jellyfin_nfo_fix' in self.config else None
+
+    @property
     def pre_seeding_dir(self):
         return self.config['pre_seeding_dir'] if 'pre_seeding_dir' in self.config else None
 
@@ -107,6 +111,15 @@ class Config:
     @dry_run.setter
     def dry_run(self, value):
         self.config["dry_run"] = value
+
+    @property
+    def trakt(self):
+        t = self.config.get("trakt", None)
+        if not t:
+            return None
+        if "client_id" not in t or "client_secret" not in t:
+            raise ValueError("trakt client_id and client_secret are required.")
+        return t
 
 
 config = Config()

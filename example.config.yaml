@@ -5,6 +5,10 @@ tmdb_api_key:
 dry_run: false
 hd_media_file_size: 300000000 # 300 MB
 min_dir_size: 100000000 # 100 MB
+trakt:
+    client_id:
+    client_secret:
+    application_id:
 
 # Use export ENV=mac to use the mac configuration
 mac:
@@ -24,13 +28,15 @@ nas:
   fix_nas_permissions: true
   deleted_media_dir: /path_to_media/deleted_media
   unsorted_media_dirs:
-    - /path_to_media/m/unsorted
-    - /path_to_media/m/download/seeding
+    - /path_to_media/media/unsorted
+    - /path_to_media/media/download/seeding
   media_dirs:
-    series: /path_to_media/m/series
-    movies: /path_to_media/m/movies/new
-    documentaries: /path_to_media/m/movies/documentary
-    unsorted: /path_to_media/m/unsorted
-    arabic: /path_to_media/m/movies/arabic
-    seeding: /path_to_media/m/download/seeding
-
+    series: /path_to_media/media/series
+    movies: /path_to_media/media/movies/new
+    documentaries: /path_to_media/media/movies/documentary
+    unsorted: /path_to_media/media/unsorted
+    arabic: /path_to_media/media/movies/arabic
+    seeding: /path_to_media/media/download/seeding
+  jellyfin_nfo_fix:
+    replace_text: /path_to_media/media/
+    replace_with_text: smb://192.1.1.5/media/

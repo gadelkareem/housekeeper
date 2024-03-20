@@ -20,7 +20,7 @@ dubbed_regex = re.compile(r".*[^a-z](dubbed|dual|multi)[^a-z]+.*", re.IGNORECASE
 threed_regex = re.compile(r".*[^a-z]3d[^a-z]+.*", re.IGNORECASE)
 hdr_regex = re.compile(r".*[^a-z]+hdr[^a-z]+.*", re.IGNORECASE)
 remux_regex = re.compile(r".*[^a-z]+remux[^a-z]+.*", re.IGNORECASE)
-series_regex = re.compile(r".+?[^a-z0-9]+S(\d+)(E\d+)?[^a-z0-9]+.*", re.IGNORECASE)
+series_regex = re.compile(r"^.+?[^a-z0-9]+?S(\d+)E(\d+)?[^a-z0-9]+.*$", re.IGNORECASE)
 
 HDR = 100
 DUBBED = 90

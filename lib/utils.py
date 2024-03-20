@@ -5,6 +5,7 @@ import math
 import os
 import re
 import errno
+import subprocess
 
 from .logger import Logger
 
@@ -54,7 +55,8 @@ class Utils:
     # fix permissions on nas
     @staticmethod
     def fix_permissions(file_path):
-        return os.system(f"find '{file_path}' " + ' -exec synoacltool -enforce-inherit {} \;')
+        file_path = file_path.replace("'", "\\'")
+        return subprocess.run(["synoacltool", "-enforce-inherit", file_path])
 
     @staticmethod
     def move(src, dst):

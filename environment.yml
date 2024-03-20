@@ -2,7 +2,7 @@ name: housekeeper
 channels:
   - defaults
 dependencies:
-  - ca-certificates=2023.12.12
+  - ca-certificates=2024.3.11
   - libcxx=14.0.6
   - libffi=3.4.4
   - ncurses=6.4
