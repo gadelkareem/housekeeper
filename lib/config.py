@@ -75,7 +75,12 @@ class Config:
 
     @property
     def jellyfin_nfo_fix(self):
-        return self.config['jellyfin_nfo_fix'] if 'jellyfin_nfo_fix' in self.config else None
+        j = self.config.get('jellyfin_nfo_fix', None)
+        if not j:
+            return None
+        if 'text_replacements' not in j:
+            raise ValueError("jellyfin_nfo_fix text_replacements is required.")
+        return j
 
     @property
     def pre_seeding_dir(self):
@@ -113,6 +118,15 @@ class Config:
         self.config["dry_run"] = value
 
     @property
+    def plex(self):
+        t = self.config.get("plex", None)
+        if not t:
+            return None
+        if "watched_url" not in t:
+            raise ValueError("plex watched_url is required.")
+        return t
+
+    @property
     def trakt(self):
         t = self.config.get("trakt", None)
         if not t:
@@ -121,5 +135,16 @@ class Config:
             raise ValueError("trakt client_id and client_secret are required.")
         return t
 
+    @property
+    def watched_movies_media_dir(self):
+        if "watched_movies_media_dir" not in self.config:
+            raise ValueError("watched_movies_media_dir is not set in config.")
+        return self.config["watched_movies_media_dir"]
+
+    @property
+    def watched_series_media_dir(self):
+        if "watched_series_media_dir" not in self.config:
+            raise ValueError("watched_series_media_dir is not set in config.")
+        return self.config["watched_series_media_dir"]
 
 config = Config()

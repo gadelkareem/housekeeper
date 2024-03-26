@@ -24,3 +24,4 @@ class Threaded:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.thread_pool.shutdown(wait=True)
+

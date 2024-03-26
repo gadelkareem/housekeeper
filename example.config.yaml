@@ -1,42 +1,61 @@
 ---
 
 log_level: INFO
-tmdb_api_key: 
+tmdb_api_key: TMDB_API_KEY
 dry_run: false
 hd_media_file_size: 300000000 # 300 MB
 min_dir_size: 100000000 # 100 MB
+min_file_size: 50000000 # 50 MB
 trakt:
-    client_id:
-    client_secret:
-    application_id:
+  client_id: CLIENT_ID
+  client_secret: CLIENT_SECRET
+  application_id: APPLICATION_ID
 
-# Use export ENV=mac to use the mac configuration
+plex:
+  watched_url: https://rss.plex.tv/id
+
 mac:
-  deleted_media_dir: /path_to_media/deleted_media
+  watched_movies_media_dir: /path/to/watched
+  watched_series_media_dir: /path/to/watched_series
+  deleted_media_dir: /path/to/deleted_media
+  pre_seeding_dir: /path/to/pre_seeding # Downloaded media on another machine
+  seeding_dir: /path/to/seeding
   unsorted_media_dirs:
-    - /path_to_media/unsorted
-    - /path_to_media/download/seeding
+    - /path/to/unsorted
+    - /path/to/seeding
   media_dirs:
-    series: /path_to_media/series
-    movies: /path_to_media/movies/new
-    documentaries: /path_to_media/movies/documentary
-    unsorted: /path_to_media/unsorted
-    arabic: /path_to_media/movies/arabic
-    seeding: /path_to_media/download/seeding
+    series: /path/to/series
+    movies: /path/to/movies/new
+    documentaries: /path/to/movies/documentary
+    unsorted: /path/to/unsorted
+    arabic: /path/to/movies/arabic
+    seeding: /path/to/seeding
+  jellyfin_nfo_fix:
+    text_replacements:
+      - replace_text: /path/to/
+        replace_with_text: smb://
+
 
 nas:
   fix_nas_permissions: true
-  deleted_media_dir: /path_to_media/deleted_media
+  watched_movies_media_dir: /path/to/watched
+  watched_series_media_dir: /path/to/watched_series
+  deleted_media_dir: /path/to/deleted_media
+  pre_seeding_dir: /path/to/pre_seeding # Downloaded media on another machine
+  seeding_dir: /path/to/seeding
   unsorted_media_dirs:
-    - /path_to_media/media/unsorted
-    - /path_to_media/media/download/seeding
+    - /path/to/unsorted
+    - /path/to/seeding
   media_dirs:
-    series: /path_to_media/media/series
-    movies: /path_to_media/media/movies/new
-    documentaries: /path_to_media/media/movies/documentary
-    unsorted: /path_to_media/media/unsorted
-    arabic: /path_to_media/media/movies/arabic
-    seeding: /path_to_media/media/download/seeding
+    series: /path/to/series
+    movies: /path/to/movies/new
+    documentaries: /path/to/movies/documentary
+    unsorted: /path/to/unsorted
+    arabic: /path/to/movies/arabic
+    seeding: /path/to/seeding
   jellyfin_nfo_fix:
-    replace_text: /path_to_media/media/
-    replace_with_text: smb://192.1.1.5/media/
+    text_replacements:
+      - replace_text: /path/to/
+        replace_with_text: smb://
+
+

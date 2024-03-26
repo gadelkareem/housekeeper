@@ -124,13 +124,19 @@ class Utils:
     @staticmethod
     def make_dirs(d):
         log.debug(f"Creating directory: {d}")
-        if not os.path.exists(d) and not config.dry_run:
-            return os.makedirs(d)
+        try:
+            if not os.path.exists(d) and not config.dry_run:
+                return os.makedirs(d, exist_ok=True)
+        except Exception as e:
+            log.error(f"Error creating directory: {d}", repr(e))
+            return False
+        return True
 
     @staticmethod
     def clean_path(s):
         s = s.strip()
         s = re.sub(r'^(\[.*?\]|www\.[^\.]+\.[^\.]+)', '', s, flags=re.IGNORECASE)
+        s = re.sub(r':', '', s, flags=re.IGNORECASE)
 
         return sanitize_filepath(s)
 
@@ -183,7 +189,7 @@ class Utils:
 
     @staticmethod
     def delete(p):
-        log.debug(f"Deleting {p}")
+        log.info(f"Deleting {p}")
         if config.dry_run:
             log.debug(f"Dry run: Would delete {p}")
             return

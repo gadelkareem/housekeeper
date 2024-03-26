@@ -5,9 +5,6 @@ Housekeeping script for media libraries
 Usage:
     ./cli.py scan
 """
-import os
-import time
-
 import click
 
 from lib.utils import Utils
@@ -46,18 +43,18 @@ def sort():
 
 @cli.command()
 def clean():
-    # Cleaner(config.final_media_dirs).move_watched()
-    # return
     """Delete empty media directories and low quality media files."""
     cleaner = Cleaner(config.media_dirs.values())
     cleaner.move_pre_seeded()
     cleaner.flatten_media_dirs()
     cleaner.clean()
     cleaner = Cleaner(config.final_media_dirs)
+    cleaner.move_watched()
     cleaner.move_trailers()
     cleaner.delete_low_quality()
     cleaner.fix_jellyfin_nfo()
     cleaner.clean()
+
 
 
 cli.add_command(sort)

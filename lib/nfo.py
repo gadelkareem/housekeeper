@@ -25,16 +25,25 @@ class NFO:
 
     def fix_jellyfin_nfo(self):
         try:
+            if not config.jellyfin_nfo_fix:
+                self.log.warning(f"jellyfin_nfo_fix config is not set. Skipping {self.path}")
+                return
+            self.log.info(f"Fixing Jellyfin NFO: {self.path}")
             content = self.nfo
-            new_content = content
 
+            text_replacements = config.jellyfin_nfo_fix.get('text_replacements', [])
             # Replace the specified text
-            if config.jellyfin_nfo_fix and config.jellyfin_nfo_fix['replace_text'] in content:
-                new_content = content.replace(config.jellyfin_nfo_fix['replace_text'],
-                                              config.jellyfin_nfo_fix['replace_with_text'])
+            for text_replacement in text_replacements:
+                if text_replacement.get('replace_text') not in content and text_replacement.get(
+                        'replace_with_text') not in content:
+                    self.log.debug(f"Text to replace not found in {self.path}")
+                    raise Exception(f"Text to replace not found in {self.path}")
+
+                content = content.replace(text_replacement.get('replace_text'),
+                                          text_replacement.get('replace_with_text'))
 
             # Parse the XML
-            root = ET.fromstring(new_content)
+            root = ET.fromstring(content)
 
             # Check if thumb and fanart elements already exist
             thumb_exists = root.find(".//thumb[@aspect='poster']") is not None

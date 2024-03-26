@@ -160,3 +160,4 @@ cython_debug/
 config.yaml
 .diskcache
 .pytrakt.json
+/run.sh

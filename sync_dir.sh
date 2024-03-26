@@ -23,7 +23,7 @@ bye
 EOF
 #rsync  --remove-source-files -rtvk --exclude='@eaDir/*' --exclude=".*"  --progress --human-readable  -avh  -e "ssh  -x -T -c aes128-gcm@openssh.com -o Compression=no -i $SSH_KEY -p 22"  "$MOUNT_POINT:$REMOTE_DIR" "$LOCAL_DIR" & #--verbose
 
-ssh -i "$SSH_KEY" "$MOUNT_POINT" "rm -rf $REMOTE_DIR/*"
+ssh -i "$SSH_KEY" "$MOUNT_POINT" "echo ' ' > $REMOTE_DIR/test && rm -rf $REMOTE_DIR/*"
 
 rm "$LOCAL_DIR"/.transferring
 

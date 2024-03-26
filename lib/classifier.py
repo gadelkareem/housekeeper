@@ -241,7 +241,7 @@ class Classifier:
             raise ValueError(f"No title provided. {self.info}")
 
         title = f"{self.info['title']} ({self.info['year']})" if self.info.get('year', None) else self.info['title']
-        Utils.clean_path(title)
+        title = Utils.clean_path(title)
 
         d = os.path.join(self.info['media_dir'], title)
         Utils.make_dirs(d)
@@ -282,6 +282,7 @@ class Classifier:
         if media:
             return media
 
+        self.log.info(f"Searching for media: {info['old_path']}")
         media = self.imdb(title)
         if not media:
             media = self.tmdb(title)
