@@ -78,7 +78,7 @@ class Utils:
 
         # create missing directories
         if not os.path.exists(os.path.dirname(dst)):
-            os.makedirs(os.path.dirname(dst))
+            Utils.make_dirs(os.path.dirname(dst))
 
         log.debug(f"Moving {src} to {dst}")
         if config.dry_run:
@@ -214,3 +214,10 @@ class Utils:
         p = math.pow(1024, i)
         s = round(size_bytes / p, 2)
         return "%s %s" % (s, size_name[i])
+
+    @staticmethod
+    def listdir(d):
+        for f in os.scandir(d):
+            if not os.path.exists(f.path):
+                continue
+            yield f.name

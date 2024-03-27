@@ -55,8 +55,6 @@ def clean():
     cleaner.fix_jellyfin_nfo()
     cleaner.clean()
 
-
-
 cli.add_command(sort)
 cli.add_command(clean)
 

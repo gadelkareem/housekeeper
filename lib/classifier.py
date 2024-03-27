@@ -165,9 +165,11 @@ class Classifier:
                 self.info['season'] = match.group(1)
                 self.info['episode'] = match.group(2)
 
-        match = ufc_regex.match(filename)
-        if match:
+        if self.info['ufc']:
             self.info['kind'] = 'series'
+            self.info['season'] = 1
+            self.info['episode'] = 1
+            self.info['title'] = 'UFC'
 
     def cleanup_title(self):
         # if title has text that looks like 'S01E01' or 'S0241E0231' then split it and take the first part if not empty otherwise take the second part
@@ -194,7 +196,7 @@ class Classifier:
         self.cleanup_title()
 
         # @todo: if media is not found, try to find it using AI API
-        media = self.find_media(self.info)
+        media = self.find_media(self.info) if not self.info['ufc'] else None
 
         self.log.debug(f"Media: {media}")
         if media:
@@ -224,17 +226,34 @@ class Classifier:
         if not self.info['new_dir']:
             raise ValueError(f"No new dir provided. {self.info}")
 
+        moved = []
         if self.parent_dir:
+            if self.info['new_dir'] in moved:
+                return
+            moved.append(self.info['new_dir'])
             Utils.move(self.parent_dir, self.info['new_dir'])
         else:
+            if self.info['new_path'] in moved:
+                return
+            moved.append(self.info['new_path'])
             Utils.move(self.filepath, self.info['new_path'])
             filename_no_ext = os.path.splitext(self.filename)[0]
             parent_dir = os.path.dirname(self.filepath)
             # copy related files to that movie
+            hashes = []
             for f in os.listdir(parent_dir):
                 filename_no_ext2 = os.path.splitext(f)[0]
                 if filename_no_ext2 == filename_no_ext:
-                    Utils.move(os.path.join(parent_dir, f), os.path.join(self.info['new_dir'], f))
+                    _from = os.path.join(parent_dir, f)
+                    _to = os.path.join(self.info['new_dir'], f)
+                    if _to in moved:
+                        return
+                    moved.append(_to)
+                    _hash = f"{_from} -> {_to}"
+                    if _hash in hashes:
+                        continue
+                    hashes.append(_hash)
+                    Utils.move(_from, _to)
 
     def set_new_dir(self):
         if not self.info['title']:

@@ -53,7 +53,7 @@ class Cleaner:
             if not os.path.exists(d):
                 self.log.error(f"Directory {d} does not exist.")
                 continue
-            for media_dir in os.listdir(d):
+            for media_dir in Utils.listdir(d):
                 media_path = os.path.join(d, media_dir)
 
                 if (not media_path or not os.path.exists(media_path) or
@@ -100,11 +100,10 @@ class Cleaner:
                     new_path = os.path.join(extras_dir, os.path.basename(r['old_path']))
 
                     self.log.debug(f"Moving: {r['old_path']} to extras")
-                    self.threaded.run(Utils.move, r['old_path'], new_path)
+                    Utils.move(r['old_path'], new_path)
                     continue
                 self.log.debug(f"Deleting: {r['old_path']}")
                 self.threaded.run(Utils.delete, r['old_path'])
-        self.threaded.wait()
         return
 
     def move_pre_seeded(self):
@@ -114,13 +113,13 @@ class Cleaner:
         if os.path.exists(os.path.join(config.pre_seeding_dir, '.transferring')):
             self.log.info("Pre-seeding is in progress.")
             return
-        for f in os.listdir(config.pre_seeding_dir):
+        for f in Utils.listdir(config.pre_seeding_dir):
             file_path = os.path.join(config.pre_seeding_dir, f)
             if os.path.isfile(file_path):
                 self.threaded.run(Utils.move, file_path, os.path.join(config.seeding_dir, f))
             else:
                 is_synced = True
-                for f1 in os.listdir(file_path):
+                for f1 in Utils.listdir(file_path):
                     if f1.startswith('.'):
                         is_synced = False
                         break
@@ -161,7 +160,7 @@ class Cleaner:
                     config.watched_movies_media_dir
                 Utils.move(final_path, os.path.join(watched_dir, Utils.clean_path(title)))
             # move back the ones that are not in watched
-            for filename in os.listdir(config.watched_movies_media_dir):
+            for filename in Utils.listdir(config.watched_movies_media_dir):
                 self.move_unwatched(filename, watched_index, config.watched_movies_media_dir)
                 self.move_unwatched(filename, watched_index, config.watched_series_media_dir)
 
@@ -189,11 +188,11 @@ class Cleaner:
     def clean(self):
         self.log.info(f"Cleaning {len(self.dirs)} directories...")
         for media_dir in self.dirs:
-            for f in os.listdir(media_dir):
+            for f in Utils.listdir(media_dir):
                 file_path = os.path.join(media_dir, f)
                 self.threaded.run(self.find_deletable_files, file_path)
                 if os.path.isdir(file_path):
-                    for nf in os.listdir(file_path):
+                    for nf in Utils.listdir(file_path):
                         self.threaded.run(self.find_deletable_files, os.path.join(file_path, nf))
         self.threaded.wait()
 
@@ -273,7 +272,7 @@ class Cleaner:
         return all_files
 
     def flatten_one_level(self, media_dir):
-        for rootdir in os.listdir(media_dir):
+        for rootdir in Utils.listdir(media_dir):
             rootdir_path = os.path.join(media_dir, rootdir)
 
             if not os.path.isdir(rootdir_path) or rootdir_path == media_dir:

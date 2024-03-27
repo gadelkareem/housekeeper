@@ -136,6 +136,15 @@ class Config:
         return t
 
     @property
+    def imdb(self):
+        t = self.config.get("imdb", None)
+        if not t:
+            return None
+        if "username" not in t or "password" not in t:
+            raise ValueError("imdb username and password are required.")
+        return t
+
+    @property
     def watched_movies_media_dir(self):
         if "watched_movies_media_dir" not in self.config:
             raise ValueError("watched_movies_media_dir is not set in config.")
