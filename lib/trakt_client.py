@@ -1,6 +1,6 @@
 import os
-import traceback
 
+from .classifier import Classifier
 from .logger import Logger
 from .config import config
 import trakt
@@ -24,9 +24,9 @@ class Trakt:
         )
 
         self.trakt.APPLICATION_ID = config.trakt['application_id']
-        trakt.core.AUTH_METHOD = trakt.core.DEVICE_AUTH
+        self.trakt.core.AUTH_METHOD = trakt.core.DEVICE_AUTH
         # trakt.core.session = factory.session
-        trakt.core.CONFIG_PATH = self.trakt_auth_file
+        self.trakt.core.CONFIG_PATH = self.trakt_auth_file
 
         if not os.path.exists(self.trakt_auth_file):
             self.trakt.init(
@@ -36,12 +36,24 @@ class Trakt:
             )
         self.user = User("me")
 
-    def watched(self):
-        if not config.trakt:
+    def watched_movies(self):
+        if not self.trakt:
             self.log.warning("Trakt configuration not found.")
             return []
         self.log.debug(f"Checking watched media on trakt.")
 
         # @todo add series history self.user.watched_shows
         w = [{'title': o.title, 'year': o.year} for o in self.user.watched_movies]
+        return w
+
+    def watched_series(self):
+        if not self.trakt:
+            self.log.warning("Trakt configuration not found.")
+            return []
+        self.log.debug(f"Checking watched series on trakt.")
+        w = []
+        for o in self.user.watched_shows:
+            if not o.next_episode:
+                w.append({'title': o.title, 'year': o.year})
+
         return w

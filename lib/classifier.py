@@ -79,18 +79,16 @@ class Classifier:
             'remux': False
         }
 
-    def extract_title_year(self, filename):
+    def extract_year(self, filename):
         # extract title and year from string such as "Central Intelligence (2016)" using regex
-        match = re.match(r'(.+)\s+\(?(\d{4})\)?', filename)
-        if not match:
-            match = re.match(r'([^\.]+).*?\.(\d{4})\.', filename)
-        if match:
-            self.log.debug(f"Extracted title and year: {match.groups()}")
-            self.info['title'] = match.group(1)
-            self.info['year'] = match.group(2)
-        elif self.parent_dir and filename != os.path.basename(self.parent_dir):
-            self.info['title'] = os.path.basename(self.parent_dir)
-            return self.extract_title_year(self.info['title'])
+        match = re.match(r'(\d{4})', filename)
+        if match and match.group(1) not in ['1080', '2160']:
+            self.log.debug(f"Extracted year: {match.groups()}")
+            # self.info['title'] = match.group(1)
+            self.info['year'] = match.group(1)
+        # elif self.parent_dir and filename != os.path.basename(self.parent_dir):
+        #     self.info['title'] = os.path.basename(self.parent_dir)
+        #     return self.extract_title_year(self.info['title'])
 
         return self.info
 
@@ -123,8 +121,8 @@ class Classifier:
         result = PTN.parse(filename)
 
         self.log.debug(f"PTN result: {result}")
-        if not result or not result.get('title', None) or self.filename_no_ext in result['title']:
-            return self.extract_title_year(filename)
+        # if not result or not result.get('title', None) or self.filename_no_ext in result['title']:
+        #     return self.extract_title_year(filename)
         if result.get('year', None):
             self.info['year'] = result['year']
         if result.get('title', None):
@@ -133,7 +131,7 @@ class Classifier:
             self.info['kind'] = 'series'
 
         if not self.info['year'] and self.info['kind'] != 'series':
-            self.extract_title_year(filename)
+            self.extract_year(filename)
 
         self.info['hdr'] = result.get('hdr', False)
         self.info['resolution'] = result.get('resolution', None)
@@ -227,33 +225,34 @@ class Classifier:
             raise ValueError(f"No new dir provided. {self.info}")
 
         moved = []
-        if self.parent_dir:
-            if self.info['new_dir'] in moved:
-                return
-            moved.append(self.info['new_dir'])
-            Utils.move(self.parent_dir, self.info['new_dir'])
-        else:
-            if self.info['new_path'] in moved:
-                return
-            moved.append(self.info['new_path'])
-            Utils.move(self.filepath, self.info['new_path'])
-            filename_no_ext = os.path.splitext(self.filename)[0]
-            parent_dir = os.path.dirname(self.filepath)
-            # copy related files to that movie
-            hashes = []
-            for f in os.listdir(parent_dir):
-                filename_no_ext2 = os.path.splitext(f)[0]
-                if filename_no_ext2 == filename_no_ext:
-                    _from = os.path.join(parent_dir, f)
-                    _to = os.path.join(self.info['new_dir'], f)
-                    if _to in moved:
-                        return
-                    moved.append(_to)
-                    _hash = f"{_from} -> {_to}"
-                    if _hash in hashes:
-                        continue
-                    hashes.append(_hash)
-                    Utils.move(_from, _to)
+        # if self.parent_dir:
+        #     if self.info['new_dir'] in moved:
+        #         return
+        #     moved.append(self.info['new_dir'])
+        #     Utils.move(self.parent_dir, self.info['new_dir'])
+        # else:
+        if self.info['new_path'] in moved:
+            return
+        moved.append(self.info['new_path'])
+        Utils.move(self.filepath, self.info['new_path'])
+        filename_no_ext = os.path.splitext(self.filename)[0]
+        parent_dir = os.path.dirname(self.filepath)
+        # copy related files to that movie
+        hashes = []
+        for f in os.listdir(parent_dir):
+            filename_no_ext2 = os.path.splitext(f)[0]
+            if filename_no_ext2 == filename_no_ext:
+                _from = os.path.join(parent_dir, f)
+                _to = os.path.join(self.info['new_dir'], f)
+                if _to in moved:
+                    return
+                moved.append(_to)
+                _hash = f"{_from} -> {_to}"
+                if _hash in hashes:
+                    continue
+                hashes.append(_hash)
+                self.log.info(f"Moving related file: {_from} -> {_to}")
+                Utils.move(_from, _to)
 
     def set_new_dir(self):
         if not self.info['title']:

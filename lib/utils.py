@@ -136,7 +136,7 @@ class Utils:
     def clean_path(s):
         s = s.strip()
         s = re.sub(r'^(\[.*?\]|www\.[^\.]+\.[^\.]+)', '', s, flags=re.IGNORECASE)
-        s = re.sub(r':', '', s, flags=re.IGNORECASE)
+        s = re.sub(r'[:\\]+', '', s, flags=re.IGNORECASE)
 
         return sanitize_filepath(s)
 

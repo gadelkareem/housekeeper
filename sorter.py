@@ -19,6 +19,7 @@ class Sorter:
                 if not (os.path.exists(filepath) and Utils.is_video_file(filepath) and Utils.is_big_file(filepath)):
                     # self.log.debug(f"Ignoring: {filepath}")
                     continue
+                self.log.info(f"Sorting: {filepath}")
                 classifier = Classifier(filepath)
                 self.threaded.run(classifier.classify_move)
 

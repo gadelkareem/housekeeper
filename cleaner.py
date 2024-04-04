@@ -4,7 +4,6 @@ import os
 import re
 import traceback
 
-from lib.plex import Plex
 from lib.trakt_client import Trakt
 from lib.config import config
 from lib.classifier import Classifier
@@ -95,8 +94,7 @@ class Cleaner:
                     self.log.debug(f"Keeping: {r['old_path']}")
                     continue
                 if i < 4:
-                    parent_dir = Utils.media_dir(r['old_path'])
-                    extras_dir = Utils.extras_dir(parent_dir)
+                    extras_dir = Utils.extras_dir(r['new_dir'])
                     new_path = os.path.join(extras_dir, os.path.basename(r['old_path']))
 
                     self.log.debug(f"Moving: {r['old_path']} to extras")
@@ -136,33 +134,36 @@ class Cleaner:
             self.log.error(f"Watched media directories or trakt config not set.")
             return False
         self.log.info(f"Moving watched media.")
-        watched = Trakt().watched()
-        watched.extend(Plex().watched())
-        if not watched:
+        watched = {'movies': Trakt().watched_movies(), 'series': Trakt().watched_series()}
+        if not watched['movies'] and not watched['series']:
             self.log.info(f"No watched media found.")
             return False
         self.log.debug(f"Moving watched media on trakt.")
         try:
-            watched_index = []
+            watched_index = {'movies': [], 'series': []}
             # move watched media to watched folder
-            for media in watched:
-                title = f"{media['title']} ({media['year']})"
-                title1 = media['title']
-                watched_index.extend([title, title1, Utils.clean_path(title), Utils.clean_path(title1)])
-                final_path = self.find_media(title) or self.find_media(title1) or \
-                             self.find_media(Utils.clean_path(title)) or \
-                             self.find_media(Utils.clean_path(title1))
-                if not final_path:
-                    self.log.debug(f"Could not find watched media folder: {title} ")
-                    continue
-                watched_dir = config.watched_series_media_dir if \
-                    'series' in final_path else \
-                    config.watched_movies_media_dir
-                Utils.move(final_path, os.path.join(watched_dir, Utils.clean_path(title)))
+            for k, v in watched.items():
+                media_type = 'series' if k == 'series' else 'movies'
+                print(f"Moving {len(v)} {media_type}")
+                for media in v:
+                    title = f"{media['title']} ({media['year']})"
+                    title1 = media['title']
+                    watched_index[media_type].extend([title, title1, Utils.clean_path(title), Utils.clean_path(title1)])
+                    final_path = self.find_media(title, media_type) or self.find_media(title1, media_type) or \
+                                 self.find_media(Utils.clean_path(title), media_type) or \
+                                 self.find_media(Utils.clean_path(title1), media_type)
+                    if not final_path:
+                        self.log.debug(f"Could not find watched media folder: {title} ")
+                        continue
+                    watched_dir = config.watched_series_media_dir if \
+                        'series' == media_type else \
+                        config.watched_movies_media_dir
+                    Utils.move(final_path, os.path.join(watched_dir, Utils.clean_path(title)))
             # move back the ones that are not in watched
             for filename in Utils.listdir(config.watched_movies_media_dir):
-                self.move_unwatched(filename, watched_index, config.watched_movies_media_dir)
-                self.move_unwatched(filename, watched_index, config.watched_series_media_dir)
+                self.move_unwatched(filename, watched_index['movies'], config.watched_movies_media_dir)
+            for filename in Utils.listdir(config.watched_series_media_dir):
+                self.move_unwatched(filename, watched_index['series'], config.watched_series_media_dir)
 
         except Exception as e:
             self.log.error(f"Error moving watched: {e}")
@@ -174,15 +175,20 @@ class Cleaner:
         if filename not in watched_index:
             Utils.move(file_path, os.path.join(config.media_dirs['unsorted'], filename))
 
-    def find_media(self, title):
+    def find_media(self, title, media_type):
         if len(title) < 3:
             self.log.debug(f"Title too short: {title}")
             return False
         for dir in config.final_media_dirs:
-            final_path = os.path.join(dir, title)
-            if os.path.exists(final_path):
-                return final_path
-        self.log.debug(f"Could not find media folder: {final_path}")
+            _final_path = os.path.join(dir, title)
+            if 'series' == media_type and '/series/' not in _final_path:
+                continue
+            elif 'movies' == media_type and '/series/' in _final_path:
+                continue
+            if os.path.exists(_final_path):
+                self.log.debug(f"Found media folder for {title}: {_final_path}")
+                return _final_path
+        self.log.debug(f"Could not find media folder for {title}")
         return False
 
     def clean(self):
