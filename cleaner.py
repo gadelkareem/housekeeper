@@ -56,7 +56,7 @@ class Cleaner:
                 media_path = os.path.join(d, media_dir)
 
                 if (not media_path or not os.path.exists(media_path) or
-                        self.is_ignore_file(media_path) or not os.path.isdir(media_path)):
+                        self.is_ignore_file(media_path, False) or not os.path.isdir(media_path)):
                     self.log.debug(f"Ignoring: {media_path}")
                     continue
                 for filename in glob.iglob(glob.escape(media_path) + '/**', recursive=True):
@@ -85,22 +85,25 @@ class Cleaner:
         self.collect_media_info()
 
         for k, v in self.media.items():
-            v = sorted(v, key=lambda x: x['rank'])
+            v = sorted(v, key=lambda x: -x['rank'])
             self.log.info(f"Ranking: {k} with {len(v)} files")
             i = 0
             for r in v:
                 i += 1
                 if i == 1:
-                    self.log.debug(f"Keeping: {r['old_path']}")
+                    self.log.debug(f"Keeping (Rank #{r['rank']}): {r['old_path']}")
+                    new_path = os.path.dirname(os.path.dirname(r['old_path'])) if ('/extras/' in r['old_path']) else False
+                    if new_path:
+                        Utils.move(r['old_path'], new_path)
                     continue
                 if i < 4:
+                    self.log.debug(f"Moving (Rank #{r['rank']}): {r['old_path']} to extras")
                     extras_dir = Utils.extras_dir(r['new_dir'])
-                    new_path = os.path.join(extras_dir, os.path.basename(r['old_path']))
-
-                    self.log.debug(f"Moving: {r['old_path']} to extras")
-                    Utils.move(r['old_path'], new_path)
+                    new_path = os.path.join(extras_dir, os.path.basename(r['old_path'])) if ('/extras/' not in r['old_path']) else False
+                    if new_path:
+                        Utils.move(r['old_path'], new_path)
                     continue
-                self.log.debug(f"Deleting: {r['old_path']}")
+                self.log.debug(f"Deleting (Rank #{r['rank']}): {r['old_path']}")
                 self.threaded.run(Utils.delete, r['old_path'])
         return
 

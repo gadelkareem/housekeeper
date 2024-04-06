@@ -1,4 +1,6 @@
 import logging
+import sys
+
 from .config import config
 
 
@@ -20,7 +22,7 @@ class Logger(logging.Logger):
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
-        handler = logging.StreamHandler()
+        handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(formatter)
         self.addHandler(handler)
         if log_level == "DEBUG":
