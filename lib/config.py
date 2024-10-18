@@ -1,5 +1,6 @@
 import logging
 import os
+
 import yaml
 
 ENV = os.environ.get("ENV", "nas")
@@ -14,13 +15,18 @@ class Config:
 
     @property
     def log_level(self):
-        if ("log_level" not in self.config or
-                logging.getLevelName(self.config["log_level"].upper()) not in [
-                    logging.DEBUG, logging.INFO,
-                    logging.WARNING,
-                    logging.ERROR,
-                    logging.CRITICAL]):
-            raise ValueError("Invalid log level. Set LOG_LEVEL to one of DEBUG, INFO, WARNING, ERROR, CRITICAL")
+        if "log_level" not in self.config or logging.getLevelName(
+            self.config["log_level"].upper()
+        ) not in [
+            logging.DEBUG,
+            logging.INFO,
+            logging.WARNING,
+            logging.ERROR,
+            logging.CRITICAL,
+        ]:
+            raise ValueError(
+                "Invalid log level. Set LOG_LEVEL to one of DEBUG, INFO, WARNING, ERROR, CRITICAL"
+            )
         return self.config["log_level"].upper()
 
     @property
@@ -37,11 +43,15 @@ class Config:
         if "media_dirs" not in self.config:
             raise ValueError("media_dirs config is not set.")
         for t in ["movies", "series", "documentaries", "unsorted"]:
-            if t not in self.config['media_dirs']:
+            if t not in self.config["media_dirs"]:
                 raise ValueError(f"{t} directory is not set in media_dirs config.")
-            self.config['media_dirs'][t] = os.path.realpath(self.config['media_dirs'][t]).rstrip("/")
-            if not os.path.exists(self.config['media_dirs'][t]):
-                raise ValueError(f"{t} directory {self.config['media_dirs'][t]} does not exist.")
+            self.config["media_dirs"][t] = os.path.realpath(
+                self.config["media_dirs"][t]
+            ).rstrip("/")
+            if not os.path.exists(self.config["media_dirs"][t]):
+                raise ValueError(
+                    f"{t} directory {self.config['media_dirs'][t]} does not exist."
+                )
 
         return self.config["media_dirs"]
 
@@ -59,36 +69,50 @@ class Config:
 
     @property
     def hd_media_file_size(self):
-        return self.config['hd_media_file_size'] if 'hd_media_file_size' in self.config else 300000000  # 300MB
+        return (
+            self.config["hd_media_file_size"]
+            if "hd_media_file_size" in self.config
+            else 300000000
+        )  # 300MB
 
     @property
     def fix_nas_permissions(self):
-        return self.config['fix_nas_permissions'] if 'fix_nas_permissions' in self.config else None
+        return (
+            self.config["fix_nas_permissions"]
+            if "fix_nas_permissions" in self.config
+            else None
+        )
 
     @property
     def min_file_size(self):
-        return self.config['min_file_size'] if 'min_file_size' in self.config else 50000000  # 50MB
+        return (
+            self.config["min_file_size"] if "min_file_size" in self.config else 50000000
+        )  # 50MB
 
     @property
     def min_dir_size(self):
-        return self.config['min_dir_size'] if 'min_dir_size' in self.config else 100000000  # 100MB
+        return (
+            self.config["min_dir_size"] if "min_dir_size" in self.config else 100000000
+        )  # 100MB
 
     @property
     def jellyfin_nfo_fix(self):
-        j = self.config.get('jellyfin_nfo_fix', None)
+        j = self.config.get("jellyfin_nfo_fix", None)
         if not j:
             return None
-        if 'text_replacements' not in j:
+        if "text_replacements" not in j:
             raise ValueError("jellyfin_nfo_fix text_replacements is required.")
         return j
 
     @property
     def pre_seeding_dir(self):
-        return self.config['pre_seeding_dir'] if 'pre_seeding_dir' in self.config else None
+        return (
+            self.config["pre_seeding_dir"] if "pre_seeding_dir" in self.config else None
+        )
 
     @property
     def seeding_dir(self):
-        return self.config['seeding_dir'] if 'seeding_dir' in self.config else None
+        return self.config["seeding_dir"] if "seeding_dir" in self.config else None
 
     @property
     def tmdb_api_key(self):
@@ -136,6 +160,24 @@ class Config:
         return t
 
     @property
+    def radarr(self):
+        t = self.config.get("radarr", None)
+        if not t:
+            return None
+        if "url" not in t or "api_key" not in t:
+            raise ValueError("radarr url and api_key are required.")
+        return t
+
+    @property
+    def sonarr(self):
+        t = self.config.get("sonarr", None)
+        if not t:
+            return None
+        if "url" not in t or "api_key" not in t:
+            raise ValueError("sonarr url and api_key are required.")
+        return t
+
+    @property
     def imdb(self):
         t = self.config.get("imdb", None)
         if not t:
@@ -155,5 +197,6 @@ class Config:
         if "watched_series_media_dir" not in self.config:
             raise ValueError("watched_series_media_dir is not set in config.")
         return self.config["watched_series_media_dir"]
+
 
 config = Config()

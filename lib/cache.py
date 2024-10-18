@@ -2,7 +2,6 @@
 # from frozendict import frozendict
 from diskcache import Cache
 
-from .utils import Utils
 from .logger import Logger
 
 cache = Cache(".diskcache")
