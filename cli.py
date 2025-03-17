@@ -6,11 +6,14 @@ Usage:
     ./cli.py scan
 """
 import click
+from trakt import Trakt
 
 from cleaner import Cleaner
 from lib.config import config
+from lib.trakt_client import TraktClient
 from lib.utils import Utils
 from sorter import Sorter
+
 
 Utils.lock_app()
 
@@ -50,10 +53,14 @@ def clean():
     cleaner.clean()
     cleaner = Cleaner(config.final_media_dirs)
     # cleaner.move_watched()
-    # cleaner.unmonitor()
+    cleaner.unmonitor()
     cleaner.move_trailers()
-    cleaner.delete_low_quality()
+    # run only between 8am and 10am
+    if 7 <= Utils.get_current_hour() <= 10:
+        cleaner.merge_case_duplicates() 
+        cleaner.delete_low_quality()
     cleaner.fix_jellyfin_nfo()
+    
     cleaner.clean()
 
 
@@ -61,7 +68,7 @@ def clean():
 def move():
     """Move watched media files."""
     cleaner = Cleaner(config.final_media_dirs)
-    cleaner.move_watched()
+    # cleaner.move_watched()
 
 
 @cli.command()
@@ -69,8 +76,7 @@ def test():
     """Move watched media files."""
     """Test new functionality."""
     cleaner = Cleaner(config.final_media_dirs)
-    cleaner.unmonitor()
-
+    
 
 cli.add_command(sort)
 cli.add_command(clean)

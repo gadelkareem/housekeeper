@@ -238,7 +238,9 @@ class Classifier:
             self.classify()
 
             if not self.info["new_dir"]:
-                raise ValueError(f"No new dir provided. {self.info}")
+                # raise ValueError(f"No new dir provided. {self.info}")
+                self.log.error(f"No new dir provided. {self.info}")
+                return
 
             moved = []
             # if self.parent_dir:
@@ -296,7 +298,8 @@ class Classifier:
         return d
 
     def set_media_dir(self):
-        d = config.media_dir("unsorted")
+        # d = config.media_dir("unsorted")
+        d = config.media_dir("movies")
         if self.info["kind"] == "series":
             d = config.media_dir("series")
         elif self.info["kind"] == "movie":
@@ -326,9 +329,9 @@ class Classifier:
             return media
 
         self.log.info(f"Searching for media: {info['old_path']}")
-        media = self.imdb(title)
-        if not media:
-            media = self.tmdb(title)
+        # media = self.imdb(title)
+        # if not media:
+        media = self.tmdb(title)
 
         if media:
             cache.set(title, media)
@@ -403,7 +406,7 @@ class Classifier:
                 cache.set(f"imdb:{title}", info)
                 return info
         except HTTPError as e:
-            if e.code in [429, 503, 403] and retry < MAX_RETRIES:
+            if e.code in [429, 503, 403, 405] and retry < MAX_RETRIES:
                 self.log.info(f"Rate limit exceeded. Retrying in {retry} seconds...")
                 time.sleep(retry)
                 return self.tmdb(title, retry + 1)

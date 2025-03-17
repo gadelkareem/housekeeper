@@ -23,6 +23,7 @@ class Sorter:
                 classifier = Classifier(filepath)
                 self.threaded.run(classifier.classify_move)
 
+
         self.threaded.wait()
 
         self.log.info(f"Done")

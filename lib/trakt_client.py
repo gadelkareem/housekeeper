@@ -4,8 +4,9 @@ import sys
 from datetime import datetime, timedelta
 from threading import Condition
 
+# https://github.com/fuzeman/trakt.py
 from trakt import Trakt
-from trakt.objects import Show
+from trakt.objects import Show, Episode
 
 from .cache import cache
 from .config import config
@@ -84,8 +85,11 @@ class TraktClient(object):
             self.log.debug("Authentication has already been started")
             return False
 
+
+        print(Trakt["oauth/device"])
         # Request new device code
         code = Trakt["oauth/device"].code()
+        print(code)
 
         self.log.info(
             'Enter the code "%s" at %s to authenticate your account'
@@ -126,7 +130,7 @@ class TraktClient(object):
 
     def config_import(self):
         self.log.debug("Initializing Trakt configuration")
-        Trakt.base_url = "http://api.trakt.tv"
+        Trakt.base_url = "https://api.trakt.tv"
         Trakt.configuration.defaults.http(retry=True)
         Trakt.configuration.defaults.oauth(refresh=True)
         Trakt.configuration.defaults.client(
@@ -142,7 +146,7 @@ class TraktClient(object):
         cache_key = f"watched_movies_{recent_days}"
         movies = cache.get(cache_key, {})
         if movies:
-            self.log.debug(f"Returning {len(movies)} movies from cache")
+            self.log.debug(f"Trakt: Returning {len(movies)} movies from cache")
             return movies
 
         with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
@@ -154,24 +158,38 @@ class TraktClient(object):
                 " Trakt: Movies watched in last " + str(recent_days) + " days:"
             )
             try:
-                for movie in Trakt["sync/history"].movies(
-                    start_at=recent_date, pagination=True
-                ):
-                    movie_dict = movie.to_dict()
-                    try:
-                        if len(movie_dict["title"]) < 2:
-                            continue
-                        movies[f"{movie_dict['title']} ({movie_dict['year']})"] = movie
-                        # self.log.debug("Added movie " + movie_dict["title"])
-                    except KeyError:
-                        self.log.error(
-                            f"Movie {movie_dict['title']} ({movie_dict['year']}) - IMDB ID not found."
-                        )
-                        pass
+                page = 1
+                id = None
+                while True:
+                    movies_itr = Trakt["sync/history"].movies(
+                        start_at=recent_date, pagination=True, extended="full", per_page=10000, page=page, id=id
+                    )
 
-            except:
-                raise Exception(
-                    "ERROR: Could not get data from Trakt. Maybe authentication is out of date? Try to delete .auth.pkl file and run script again."
+                    self.log.debug(f"Trakt: Movies Page {page} of {movies_itr.total_pages}")
+                    for movie in movies_itr:
+                        id = movie.id
+                        movie_dict = movie.to_dict()
+
+                        try:
+                            if len(movie_dict["title"]) < 2:
+                                continue
+                            movies[f"{movie_dict['title']} ({movie_dict['year']})"] = movie
+                            # self.log.debug("Added movie " + movie_dict["title"])
+                        except KeyError:
+                            self.log.error(
+                                f"Movie {movie_dict['title']} ({movie_dict['year']}) - IMDB ID not found."
+                            )
+                            pass
+                    self.log.debug(f"Fetched from Trakt, {len(movies)} movies so far.")
+                    page += 1
+                    if page > movies_itr.total_pages:
+                        break
+
+            except Exception as e:
+                self.log.exception(
+                    "ERROR: Could not get data from Trakt. Maybe authentication is out of date? Try to delete .auth.pkl file and run script again.",
+                    e,
+                    exc_info=True,
                 )
 
         if movies:
@@ -200,34 +218,53 @@ class TraktClient(object):
             self.log.debug(
                 "Trakt: Episodes watched in last " + str(recent_days) + " days:"
             )
-            for episode in Trakt["sync/history"].shows(
-                start_at=recent_date, pagination=True, extended="full"
-            ):
-                # episode_dict = episode.to_dict()
-                # ep_no = episode_dict["number"]
-                # season_no = episode.season.pk
-                # show_tvdb = episode.show.pk[1]
+            page = 1
+            id = None
+            while True:
+                episode_itr = None
+                try:
+                    episode_itr = Trakt["sync/history"].shows(
+                        start_at=recent_date, pagination=True, extended="full", per_page=10000, page=page, id=id
+                    )
+                    self.log.debug(f"Trakt: Shows Page {page} of {episode_itr.total_pages}")
 
-                # if show_tvdb in series:
-                #     # show_episodes_tvdbids[show_tvdb].append(episode_dict['ids']['tvdb'])
-                #     series[show_tvdb].append([season_no, ep_no])
-                # else:
-                #     series[show_tvdb] = []
-                #     series[show_tvdb].append([season_no, ep_no])
-                show: Show = episode.show
-                series.setdefault(f"{show.title} ({show.year})", []).append(episode)
+                except Exception as e:
+                    self.log.error(
+                        f"ERROR: Could not get sync/history from Trakt. Error: {e}"
+                    )
+                if not episode_itr:
+                    self.log.error("Trakt: No episodes found")
+                    break
+                episode: Episode
+                for episode in episode_itr:
+                    # episode_dict = episode.to_dict()
+                    # ep_no = episode_dict["number"]
+                    # season_no = episode.season.pk
+                    # show_tvdb = episode.show.pk[1]
 
-                # episode_dict = episode.to_dict()
-                # self.log.debug(
-                #     episode.show.title
-                #     + " - S"
-                #     + str(episode.season.pk).zfill(2)
-                #     + "E"
-                #     + str(episode_dict["number"]).zfill(2)
-                #     + ": "
-                #     + episode_dict["title"]
-                # )
+                    # if show_tvdb in series:
+                    #     # show_episodes_tvdbids[show_tvdb].append(episode_dict['ids']['tvdb'])
+                    #     series[show_tvdb].append([season_no, ep_no])
+                    # else:
+                    #     series[show_tvdb] = []
+                    #     series[show_tvdb].append([season_no, ep_no])
+                    show: Show = episode.show
+                    id = episode.id
+                    series.setdefault(f"{show.title} ({show.year})", []).append(episode)
 
+                    # episode_dict = episode.to_dict()
+                    # self.log.debug(
+                    #     episode.show.title
+                    #     + " - S"
+                    #     + str(episode.season.pk).zfill(2)
+                    #     + "E"
+                    #     + str(episode_dict["number"]).zfill(2)
+                    #     + ": "
+                    #     + episode_dict["title"]
+                    # )
+                page += 1
+                if page > episode_itr.total_pages:
+                    break
         if series:
             cache.set(cache_key, series, expire=WEEK_IN_SECONDS)
 

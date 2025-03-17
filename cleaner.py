@@ -3,6 +3,7 @@ import logging
 import os
 import traceback
 from datetime import datetime
+import re
 
 from lib.cache import cache
 from lib.classifier import Classifier
@@ -106,6 +107,7 @@ class Cleaner:
     def delete_low_quality(self):
         self.collect_media_info()
 
+
         for k, v in self.media.items():
             v = sorted(v, key=lambda x: -x["rank"])
             self.log.info(f"Ranking: {k} with {len(v)} files")
@@ -146,6 +148,7 @@ class Cleaner:
         if os.path.exists(os.path.join(config.pre_seeding_dir, ".transferring")):
             self.log.info("Pre-seeding is in progress.")
             return
+
         for f in Utils.listdir(config.pre_seeding_dir):
             file_path = os.path.join(config.pre_seeding_dir, f)
             if os.path.isfile(file_path):
@@ -184,6 +187,7 @@ class Cleaner:
             self.log.info(f"No watched media found.")
             return
         last_updated = self.watched_cache.get("last_updated")
+
         self.log.info(
             f"Watched cache has {len(self.watched_cache['files']['movies'])} movies and "
             f"{len(self.watched_cache['files']['series'])} series last updated: {last_updated}"
@@ -232,7 +236,7 @@ class Cleaner:
         self.log.info(f"Listing watched media.")
         watched = {
             "movies": Trakt().watched_movies(),
-            "series": {},  # Trakt().watched_series(), #@TODO: fix this
+            "series": Trakt().watched_series(), #@TODO: fix this
         }
         if not watched["movies"] and not watched["series"]:
             self.log.info(f"No watched media found.")
@@ -482,3 +486,64 @@ class Cleaner:
                 self.threaded.run(Utils.move, file, destination)
         self.threaded.wait()
         return
+
+    def merge_case_duplicates(self):
+        """
+        Merge folders that have the same name with different cases.
+        Keeps the version with uppercase letters in the name and prefers versions with years.
+        """
+        for media_dir in self.dirs:
+            if not os.path.exists(media_dir):
+                continue
+            
+            # Get all directories in the media directory using Utils.listdir
+            all_dirs = [d for d in Utils.listdir(media_dir) if os.path.isdir(os.path.join(media_dir, d))]
+            
+            self.log.info(f"Found {len(all_dirs)} directories in {media_dir}")
+            
+            # Group directories by their normalized name
+            case_groups = {}
+            for dir_name in all_dirs:
+                # Normalize the name
+                normalized_name = dir_name.lower()
+                # Remove year in parentheses for grouping
+                normalized_name = re.sub(r'\(\d{4}\)', '', normalized_name)
+                # Keep only alphanumeric chars
+                normalized_name = ''.join(c for c in normalized_name if c.isalnum())
+                normalized_name = normalized_name.strip()
+                
+                if normalized_name not in case_groups:
+                    case_groups[normalized_name] = []
+                case_groups[normalized_name].append(dir_name)
+            
+            # Process groups that have multiple variations
+            duplicates_found = False
+            for normalized_name, variations in case_groups.items():
+                if len(variations) > 1:
+                    duplicates_found = True
+                    self.log.info(f"Found duplicate group: {variations}")
+                    
+                    # Score function to prefer versions with years and uppercase letters
+                    def score_name(name):
+                        score = 0
+                        # Heavily prefer names with years
+                        if re.search(r'\(\d{4}\)', name):
+                            score += 1000
+                        # Add points for uppercase letters
+                        score += sum(1 for c in name if c.isupper())
+                        return score
+                    
+                    target_dir = max(variations, key=score_name)
+                    
+                    for dir_name in variations:
+                        if dir_name != target_dir:
+                            src_path = os.path.join(media_dir, dir_name)
+                            dst_path = os.path.join(media_dir, target_dir)
+                            
+                            self.log.info(f"Merging '{dir_name}' into '{target_dir}'")
+                            self.threaded.run(Utils.merge_directory, src_path, dst_path)
+            
+            if not duplicates_found:
+                self.log.info("No duplicates found")
+            
+            self.threaded.wait()

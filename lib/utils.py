@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import logging
 import fcntl
 import glob
 import math
@@ -6,6 +7,7 @@ import os
 import re
 import errno
 import subprocess
+from datetime import datetime
 
 from .logger import Logger
 
@@ -17,30 +19,37 @@ from .config import config
 from pathvalidate import sanitize_filepath
 from pathlib import Path
 
-log = Logger('utils')
-lockfile = None
-
-
 class Utils:
+    _log = None
+    _lockfile = None
+
+    @classmethod
+    def get_logger(cls):
+        if not cls._log or cls._log.level != getattr(logging, config.log_level.upper()):
+            cls._log = Logger('utils')
+        return cls._log
 
     @staticmethod
-    def lock_app():
-        global lockfile
+    def get_current_hour():
+        return int(datetime.now().strftime('%H'))
+
+    @classmethod
+    def lock_app(cls):
         lock_file_path = f'/tmp/housekeeper.lock'
-        lockfile = open(lock_file_path, 'w')
+        cls._lockfile = open(lock_file_path, 'w')
 
         try:
             # Try to grab an exclusive lock on the file, raise error otherwise
-            fcntl.lockf(lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.lockf(cls._lockfile, fcntl.LOCK_EX | fcntl.LOCK_NB)
 
         except OSError as e:
             # if e.errno == errno.EACCES or e.errno == errno.EAGAIN:
             #     return False
-            log.error("Another instance of the app is running. Exiting.")
+            cls.get_logger().error("Another instance of the app is running. Exiting.")
             exit()
 
         else:
-            log.info(f"Lock acquired {lock_file_path}")
+            cls.get_logger().info(f"Lock acquired {lock_file_path}")
             return True
 
     @staticmethod
@@ -58,44 +67,44 @@ class Utils:
         file_path = file_path.replace("'", "\\'")
         return subprocess.run(["synoacltool", "-enforce-inherit", file_path])
 
-    @staticmethod
-    def move(src, dst):
+    @classmethod
+    def move(cls, src, dst):
         if src == dst:
-            log.debug(f"Skipping move: {src} to {dst}")
+            cls.get_logger().debug(f"Skipping move: {src} to {dst}")
             return
         if not src or not dst:
             raise ValueError(f"Error: Invalid move: {src} to {dst}")
 
         if '@eadir' in str.lower(src) or '@eadir' in str.lower(dst):
-            log.warning(f"Skipping move for system files: {src} to {dst}")
+            cls.get_logger().warning(f"Skipping move for system files: {src} to {dst}")
             return
 
         if dst in config.media_dirs.values() or dst == config.deleted_media_dir:
             raise ValueError(f"Destination {dst} is a media directory. Cannot move {src} here.")
 
         if os.path.exists(dst) and os.path.isfile(dst):
-            dst = Utils.new_unique_file(os.path.dirname(dst), dst)
+            dst = cls.new_unique_file(os.path.dirname(dst), dst)
 
         # create missing directories
         if not os.path.exists(os.path.dirname(dst)):
-            Utils.make_dirs(os.path.dirname(dst))
+            cls.make_dirs(os.path.dirname(dst))
 
-        log.debug(f"Moving {src} to {dst}")
+        cls.get_logger().debug(f"Moving {src} to {dst}")
         if config.dry_run:
-            log.info(f"Dry run: Would move {src} to {dst}")
+            cls.get_logger().debug(f"Dry run: Would move {src} to {dst}")
             return
         try:
             if os.path.isfile(src):
                 if shutil.move(src, dst):
-                    log.info(f"Moved {src} to {dst}")
+                    cls.get_logger().info(f"Moved {src} to {dst}")
                     if os.path.exists(src):
                         # delete file
                         shutil.rmtree(src, ignore_errors=True)
                 else:
-                    log.error(f"Error moving {src} to {dst}")
+                    cls.get_logger().error(f"Error moving {src} to {dst}")
             elif os.path.isdir(src):
                 for f in os.listdir(src):
-                    Utils.move(os.path.join(src, f), os.path.join(dst, f))
+                    cls.move(os.path.join(src, f), os.path.join(dst, f))
                 if os.path.exists(src) and not os.path.exists(dst):
                     try:
                         shutil.move(src, dst)
@@ -106,11 +115,11 @@ class Utils:
 
             if os.path.exists(dst):
                 if config.fix_nas_permissions:
-                    log.debug(f"Fixing permissions for {dst}")
-                    Utils.fix_permissions(dst)
+                    cls.get_logger().debug(f"Fixing permissions for {dst}")
+                    cls.fix_permissions(dst)
 
         except Exception as e:
-            log.error(f"Error moving {src} to {dst}. Error: " + repr(e))
+            cls.get_logger().error(f"Error moving {src} to {dst}. Error: " + repr(e))
 
     @staticmethod
     def is_big_file(file):
@@ -121,14 +130,14 @@ class Utils:
         return os.path.isfile(filepath) and str.lower(filepath).endswith(
             ('.mkv', '.mp4', '.avi', '.mov', '.wmv', '.mpg', '.mp2', '.mpeg', '.mpe', '.mpv', '.m2v', '.m4v', '.ts'))
 
-    @staticmethod
-    def make_dirs(d):
-        log.debug(f"Creating directory: {d}")
+    @classmethod
+    def make_dirs(cls, d):
+        cls.get_logger().debug(f"Creating directory: {d}")
         try:
             if not os.path.exists(d) and not config.dry_run:
                 return os.makedirs(d, exist_ok=True)
         except Exception as e:
-            log.error(f"Error creating directory: {d}", repr(e))
+            cls.get_logger().error(f"Error creating directory: {d}", repr(e))
             return False
         return True
 
@@ -137,7 +146,6 @@ class Utils:
         s = s.strip()
         s = re.sub(r'^(\[.*?\]|www\.[^\.]+\.[^\.]+)', '', s, flags=re.IGNORECASE)
         s = re.sub(r'[:\\]+', '', s, flags=re.IGNORECASE)
-
         return sanitize_filepath(s)
 
     @staticmethod
@@ -165,18 +173,18 @@ class Utils:
 
         return os.path.join(dir, unique_filename)
 
-    @staticmethod
-    def extras_dir(media_path):
+    @classmethod
+    def extras_dir(cls, media_path):
         e = os.path.join(media_path, "extras")
         if not os.path.exists(e):
             os.makedirs(e)
         return e
 
-    @staticmethod
-    def trailers_dir(file_path):
+    @classmethod
+    def trailers_dir(cls, file_path):
         e = os.path.join(file_path, "trailers")
         if not os.path.exists(e):
-            log.debug(f"Creating trailers directory: {e}")
+            cls.get_logger().debug(f"Creating trailers directory: {e}")
             os.makedirs(e)
         return e
 
@@ -187,16 +195,16 @@ class Utils:
                 return os.path.join(d, file_path.replace(d, "").split("/")[1])
         return None
 
-    @staticmethod
-    def delete(p):
-        log.info(f"Deleting {p}")
+    @classmethod
+    def delete(cls, p):
+        cls.get_logger().info(f"Deleting {p}")
         if config.dry_run:
-            log.debug(f"Dry run: Would delete {p}")
+            cls.get_logger().debug(f"Dry run: Would delete {p}")
             return
         try:
-            Utils.move(p, Utils.replace_media_path(p, config.deleted_media_dir))
+            cls.move(p, cls.replace_media_path(p, config.deleted_media_dir))
         except Exception as e:
-            log.error(f"Error deleting {p}. Error: " + repr(e))
+            cls.get_logger().error(f"Error deleting {p}. Error: " + repr(e))
 
     @staticmethod
     def replace_media_path(p, new_path):
@@ -221,3 +229,43 @@ class Utils:
             if not os.path.exists(f.path):
                 continue
             yield f.name
+
+    @classmethod
+    def merge_directory(cls, src_path, dst_path):
+        """
+        Merge contents of src_path into dst_path, keeping newer files.
+        Args:
+            src_path: Source directory path
+            dst_path: Destination directory path
+        """
+        src_name = os.path.basename(src_path)
+        dst_name = os.path.basename(dst_path)
+        
+        cls.get_logger().debug(f"Processing contents of '{src_name}' to merge into '{dst_name}'")
+        
+        for item in cls.listdir(src_path):
+            src_item = os.path.join(src_path, item)
+            dst_item = os.path.join(dst_path, item)
+            
+            if os.path.exists(dst_item):
+                if os.path.isdir(src_item):
+                    cls.get_logger().debug(f"Merging directory: {item}")
+                    for sub_item in cls.listdir(src_item):
+                        src_sub = os.path.join(src_item, sub_item)
+                        dst_sub = os.path.join(dst_item, sub_item)
+                        if not os.path.exists(dst_sub):
+                            cls.get_logger().debug(f"Moving new file: {sub_item}")
+                            cls.move(src_sub, dst_sub)
+                        elif os.path.getmtime(src_sub) > os.path.getmtime(dst_sub):
+                            cls.get_logger().debug(f"Updating newer file: {sub_item}")
+                            cls.move(src_sub, dst_sub)
+                else:
+                    if os.path.getmtime(src_item) > os.path.getmtime(dst_item):
+                        cls.get_logger().debug(f"Updating newer file: {item}")
+                        cls.move(src_item, dst_item)
+            else:
+                cls.get_logger().debug(f"Moving new item: {item}")
+                cls.move(src_item, dst_item)
+        
+        cls.get_logger().debug(f"Deleting source directory: {src_name}")
+        cls.delete(src_path)
