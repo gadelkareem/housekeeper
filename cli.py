@@ -7,16 +7,14 @@ Usage:
 """
 import click
 from trakt import Trakt
+from filelock import Timeout
 
 from cleaner import Cleaner
 from lib.config import config
 from lib.trakt_client import TraktClient
 from lib.utils import Utils
+from lib.audio_manager import AudioManager
 from sorter import Sorter
-
-
-Utils.lock_app()
-
 
 @click.group()
 @click.option("--debug/--no-debug", default=False, is_flag=True)
@@ -73,15 +71,28 @@ def move():
 
 @cli.command()
 def test():
-    """Move watched media files."""
     """Test new functionality."""
     cleaner = Cleaner(config.final_media_dirs)
     
+
+@cli.command()
+def fix_audio():
+    """Fix audio tracks to set English as default when available."""
+    audio_manager = AudioManager(config.final_media_dirs)
+    audio_manager.scan_and_fix_audio_tracks()
+
 
 cli.add_command(sort)
 cli.add_command(clean)
 cli.add_command(move)
 cli.add_command(test)
+cli.add_command(fix_audio)
 
 if __name__ == "__main__":
-    cli()
+    try:
+        # Use the file lock library to handle locking
+        with Utils.get_app_lock():
+            cli()
+    except Timeout:
+        click.echo("Error: Another instance is already running.")
+        exit(1)

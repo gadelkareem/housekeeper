@@ -172,11 +172,14 @@ class Cleaner:
             self.flatten_one_level(media_dir)
 
     def unmonitor(self):
-        movies = Trakt().watched_movies()
-        series = Trakt().watched_series()
-        self.log.debug(f"Unmonitoring {len(movies)} movies and {len(series)} series.")
-        self.radarr.unmonitor(movies)
-        self.sonarr.unmonitor(series)
+        try:
+            movies = Trakt().watched_movies()
+            series = Trakt().watched_series()
+            self.log.debug(f"Unmonitoring {len(movies)} movies and {len(series)} series.")
+            self.radarr.unmonitor(movies)
+            self.sonarr.unmonitor(series)
+        except Exception as e:
+            self.log.error(f"Failed to unmonitor movies or series: {e}")
 
     def move_watched(self):
         if not config.watched_movies_media_dir:

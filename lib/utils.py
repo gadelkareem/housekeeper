@@ -18,6 +18,7 @@ import xml.etree.ElementTree as ET
 from .config import config
 from pathvalidate import sanitize_filepath
 from pathlib import Path
+from filelock import FileLock, Timeout
 
 class Utils:
     _log = None
@@ -35,8 +36,14 @@ class Utils:
 
     @classmethod
     def lock_app(cls):
+        """Acquire application lock and set up signal handlers for cleanup"""
         lock_file_path = f'/tmp/housekeeper.lock'
         cls._lockfile = open(lock_file_path, 'w')
+
+        # Set up signal handlers to ensure cleanup on termination
+        import signal
+        for sig in [signal.SIGINT, signal.SIGTERM, signal.SIGHUP]:
+            signal.signal(sig, cls._signal_handler)
 
         try:
             # Try to grab an exclusive lock on the file, raise error otherwise
@@ -269,3 +276,10 @@ class Utils:
         
         cls.get_logger().debug(f"Deleting source directory: {src_name}")
         cls.delete(src_path)
+
+
+    @classmethod
+    def get_app_lock(cls):
+        """Get a filelock instance for application locking"""
+        lock_file = '/tmp/housekeeper.lock'
+        return FileLock(lock_file, timeout=1)  # 1 second timeout

@@ -164,8 +164,9 @@ class TraktClient(object):
                     movies_itr = Trakt["sync/history"].movies(
                         start_at=recent_date, pagination=True, extended="full", per_page=10000, page=page, id=id
                     )
-
-                    self.log.debug(f"Trakt: Movies Page {page} of {movies_itr.total_pages}")
+                    if not movies_itr:
+                        self.log.error("Trakt: No movies found")
+                        break
                     for movie in movies_itr:
                         id = movie.id
                         movie_dict = movie.to_dict()
@@ -230,7 +231,7 @@ class TraktClient(object):
 
                 except Exception as e:
                     self.log.error(
-                        f"ERROR: Could not get sync/history from Trakt. Error: {e}"
+                        f"ERROR: Could not get episodes from Trakt. Error: {e}"
                     )
                 if not episode_itr:
                     self.log.error("Trakt: No episodes found")
