@@ -73,6 +73,7 @@ def move():
 def test():
     """Test new functionality."""
     cleaner = Cleaner(config.final_media_dirs)
+    cleaner.unmonitor()
     
 
 @cli.command()
