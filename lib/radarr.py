@@ -42,8 +42,9 @@ class Radarr(object):
         self.log.info(f"Radarr: Found {len(radarr_movies)} total movies, {monitored_count} monitored")
         self.log.info(f"Trakt: Processing {len(watched)} watched movies for unmonitoring")
         
-        # Track movies to unmonitor
+        # Track movies to unmonitor and cache IMDB lookups
         movies_to_unmonitor = []
+        imdb_cache = {}  # Cache IMDB lookups to avoid repeated searches
         
         for _id, movie in watched.items():
             movie = movie.to_dict()
@@ -56,31 +57,46 @@ class Radarr(object):
             if not imdb_id and not tmdb_id:
                 self.log.error(f"Error: No IMDB or TMDB ID found for {movie['title']}")
                 continue
+            
+            # Look for direct matches first (most efficient)
             for radarr_movie in radarr_movies:
                 try:
                     if len(radarr_movie.get("title")) < 2:
                         continue
                     if not radarr_movie.get("monitored"):
                         continue
-                    if imdb_id != radarr_movie.get(
-                        "imdbId"
-                    ) and tmdb_id != radarr_movie.get("tmdbId"):
-                        if not imdb_id:
-                            r = self.classifier.imdb(radarr_movie["title"])
-                            if r:
-                                imdb_id = r.get("imdb")
-                        if not imdb_id or imdb_id != radarr_movie.get("imdbId"):
-                            # Only log if we're having trouble with a specific movie
-                            # self.log.debug(f"No match for {radarr_movie['title']}")
+                    
+                    # Check for direct ID matches first
+                    if (imdb_id and imdb_id == radarr_movie.get("imdbId")) or \
+                       (tmdb_id and tmdb_id == radarr_movie.get("tmdbId")):
+                        self.log.debug(
+                            f"Found direct match: {radarr_movie['title']}, imdb_id: {imdb_id}:{radarr_movie.get('imdbId')}, tmdb_id: {tmdb_id}:{radarr_movie.get('tmdbId')}"
+                        )
+                        movies_to_unmonitor.append(radarr_movie)
+                        continue
+                    
+                    # Only do expensive IMDB lookups if no direct match and no IMDB ID from Trakt
+                    if not imdb_id:
+                        radarr_title = radarr_movie["title"]
+                        radarr_year = radarr_movie.get("year", "")
+                        cache_key = f"{radarr_title} {radarr_year}".strip()
+                        
+                        # Check our local cache first
+                        if cache_key not in imdb_cache:
+                            r = self.classifier.imdb(cache_key)
+                            imdb_cache[cache_key] = r.get("imdb") if r else None
+                        
+                        cached_imdb = imdb_cache[cache_key]
+                        if cached_imdb and cached_imdb == radarr_movie.get("imdbId"):
+                            self.log.debug(
+                                f"Found cached match: {radarr_movie['title']}, cached_imdb: {cached_imdb}"
+                            )
+                            movies_to_unmonitor.append(radarr_movie)
                             continue
 
-                    self.log.debug(
-                        f"Found match: {radarr_movie['title']}, imdb_id: {imdb_id}:{radarr_movie.get('imdbId')}, tmdb_id: {tmdb_id}:{radarr_movie.get('tmdbId')}"
-                    )
-                    movies_to_unmonitor.append(radarr_movie)
                 except Exception as e:
                     self.log.error(
-                        f"Error: No IMDB ID found for Radarr movie {radarr_movie['title']} {repr(e)} {traceback.format_exc()}"
+                        f"Error matching {movie['title']} with {radarr_movie['title']}: {repr(e)}"
                     )
                     continue
 

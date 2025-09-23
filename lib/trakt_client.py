@@ -24,6 +24,11 @@ class TraktClient(object):
             self.log.error("Trakt configuration not found.")
             return
 
+        # Set auth file path relative to the project root (same as config.yaml)
+        # Use the same logic as config.py to ensure consistency
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        self.auth_file_path = os.path.join(project_root, ".auth.pkl")
+        self.log.debug(f"Auth file path set to: {self.auth_file_path}")
         self.is_authenticating = Condition()
         self.authorization = None
         # Bind trakt events
@@ -73,14 +78,38 @@ class TraktClient(object):
     #     return w
 
     def auth_load(self):
+        self.log.debug(f"Attempting to load auth file from: {self.auth_file_path}")
+        self.log.debug(f"Auth file exists: {os.path.exists(self.auth_file_path)}")
+        
         try:
-            with open(os.path.join(sys.path[0], ".auth.pkl"), "rb") as f:
+            with open(self.auth_file_path, "rb") as f:
                 auth_file = pickle.load(f)
             self.authorization = auth_file
-            self.log.debug("Loaded authorization from .auth.pkl")
+            self.log.debug(f"Successfully loaded authorization from {self.auth_file_path}")
+            
+            # Log token info for debugging
+            if self.authorization:
+                created_at = self.authorization.get('created_at')
+                expires_in = self.authorization.get('expires_in', 0)
+                if created_at:
+                    self.log.debug(f"Token created at: {datetime.fromtimestamp(created_at)}")
+                    self.log.debug(f"Token expires in: {expires_in} seconds")
+                    
+        except FileNotFoundError:
+            self.log.debug(f"Auth file not found at {self.auth_file_path}")
         except Exception as e:
-            self.log.debug(f"Could not load auth file: {e}")
+            self.log.warning(f"Could not load auth file from {self.auth_file_path}: {e}")
             pass
+
+    def auth_save(self):
+        """Save current authorization to file"""
+        if self.authorization:
+            try:
+                with open(self.auth_file_path, "wb") as f:
+                    pickle.dump(self.authorization, f, pickle.HIGHEST_PROTOCOL)
+                self.log.debug(f"Saved authorization to {self.auth_file_path}")
+            except Exception as e:
+                self.log.error(f"Failed to save authorization: {e}")
 
     def is_token_expired(self, buffer_minutes=30):
         """Check if token is expired or will expire within buffer_minutes"""
@@ -88,7 +117,13 @@ class TraktClient(object):
             return True
             
         expires_in = self.authorization.get('expires_in', 0)
-        created_at = self.authorization.get('created_at', 0)
+        created_at = self.authorization.get('created_at')
+        
+        # If no created_at, add it based on current time (for newly created tokens)
+        if not created_at and expires_in:
+            created_at = datetime.now().timestamp()
+            self.authorization['created_at'] = created_at
+            self.auth_save()
         
         if not created_at or not expires_in:
             self.log.warning("Token missing expiry information")
@@ -99,30 +134,56 @@ class TraktClient(object):
         buffer_time = buffer_minutes * 60
         
         # Return True if expired or will expire within buffer time
-        return current_time >= (expiry_time - buffer_time)
+        is_expired = current_time >= (expiry_time - buffer_time)
+        
+        if is_expired:
+            self.log.debug(f"Token expired or expiring soon. Created: {datetime.fromtimestamp(created_at)}, Expires in: {expires_in}s, Current: {datetime.fromtimestamp(current_time)}")
+        else:
+            remaining_hours = (expiry_time - current_time) / 3600
+            self.log.debug(f"Token valid for {remaining_hours:.1f} more hours")
+            
+        return is_expired
 
     def ensure_valid_token(self):
         """Ensure we have a valid, non-expired token"""
-        if self.is_token_expired():
-            self.log.info("Token is expired or missing, initiating re-authentication")
-            # Clear existing auth
-            self.authorization = None
-            # Delete old auth file
-            try:
-                os.remove(os.path.join(sys.path[0], ".auth.pkl"))
-                self.log.debug("Deleted expired auth file")
-            except:
-                pass
-            # Re-authenticate
+        if not self.authorization:
+            self.log.info("No authorization found, initiating authentication")
             return self.authenticate()
-        else:
-            expires_in = self.authorization.get('expires_in', 0)
-            created_at = self.authorization.get('created_at', 0)
-            if created_at and expires_in:
-                expiry_time = created_at + expires_in
-                remaining_hours = (expiry_time - datetime.now().timestamp()) / 3600
-                self.log.debug(f"Token valid for {remaining_hours:.1f} more hours")
-            return True
+            
+        # Check if token needs refresh (but don't force re-auth immediately)
+        if self.is_token_expired(buffer_minutes=60):  # Check with 1-hour buffer
+            self.log.info("Token is expired or expiring soon, attempting refresh")
+            
+            # Try to refresh the token using trakt.py's built-in mechanism
+            try:
+                # The trakt.py library should automatically refresh when we use it with refresh=True
+                # Let's test if the token is still usable by making a minimal API call
+                with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
+                    # Make a simple API call to test and potentially refresh the token
+                    try:
+                        # This will trigger a refresh if needed
+                        Trakt["users/settings"]()
+                        self.log.info("Token successfully refreshed via API call")
+                        return True
+                    except Exception as api_error:
+                        self.log.warning(f"API call failed, token may be invalid: {api_error}")
+                        # If API call fails, fall back to re-authentication
+                        raise Exception("Token refresh failed")
+                        
+            except Exception as refresh_error:
+                self.log.warning(f"Token refresh failed: {refresh_error}")
+                self.log.info("Falling back to full re-authentication")
+                
+                # Clear existing auth and re-authenticate
+                self.authorization = None
+                try:
+                    os.remove(self.auth_file_path)
+                    self.log.debug("Deleted expired auth file")
+                except:
+                    pass
+                return self.authenticate()
+        
+        return True
 
     def authenticate(self):
         if not self.is_authenticating.acquire(blocking=False):
@@ -194,15 +255,15 @@ class TraktClient(object):
             self.log.debug(f"Trakt: Returning {len(movies)} movies from cache")
             return movies
 
-        with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
-            # Expired token will be refreshed automatically (as `refresh=True`)
-            today = datetime.now()
-            recent_date = today - timedelta(days=recent_days)
+        try:
+            with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
+                # Expired token will be refreshed automatically (as `refresh=True`)
+                today = datetime.now()
+                recent_date = today - timedelta(days=recent_days)
 
-            self.log.debug(
-                " Trakt: Movies watched in last " + str(recent_days) + " days:"
-            )
-            try:
+                self.log.debug(
+                    " Trakt: Movies watched in last " + str(recent_days) + " days:"
+                )
                 page = 1
                 id = None
                 while True:
@@ -234,12 +295,21 @@ class TraktClient(object):
                     if movies_itr and hasattr(movies_itr, 'total_pages') and page > movies_itr.total_pages:
                         break
 
-            except Exception as e:
-                self.log.exception(
-                    "ERROR: Could not get data from Trakt. Maybe authentication is out of date? Try to delete .auth.pkl file and run script again.",
-                    e,
-                    exc_info=True,
-                )
+        except Exception as e:
+            self.log.exception(
+                "ERROR: Could not get data from Trakt. Maybe authentication is out of date? Try to delete .auth.pkl file and run script again.",
+                e,
+                exc_info=True,
+            )
+        except Exception as oauth_error:
+            self.log.error(f"OAuth configuration failed: {oauth_error}")
+            self.log.info("Token may be invalid, attempting to refresh authentication")
+            # Clear the token and try to re-authenticate
+            self.authorization = None
+            if self.ensure_valid_token():
+                # Retry the operation once with new token
+                return self.watched_movies(recent_days)
+            return []
 
         if movies:
             cache.set(cache_key, movies, expire=WEEK_IN_SECONDS)
@@ -264,89 +334,64 @@ class TraktClient(object):
         if series:
             self.log.debug(f"Returning {len(series)} series from cache")
             return series
-        with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
-            # Expired token will be refreshed automatically (as `refresh=True`)
-            # Check if token is expired and log it
-            if self.authorization:
-                expires_in = self.authorization.get('expires_in', 0)
-                created_at = self.authorization.get('created_at', 0)
-                current_time = datetime.now().timestamp()
-                if created_at and expires_in:
-                    expiry_time = created_at + expires_in
-                    if current_time > expiry_time:
-                        self.log.warning(f"Trakt: Token appears expired (created: {datetime.fromtimestamp(created_at)}, expires in: {expires_in}s)")
-                    else:
-                        self.log.debug(f"Trakt: Token valid (expires: {datetime.fromtimestamp(expiry_time)})")
-                else:
-                    self.log.warning("Trakt: Token expiry information not available")
-            
-            today = datetime.now()
-            recent_date = today - timedelta(days=recent_days)
+        try:
+            with Trakt.configuration.oauth.from_response(self.authorization, refresh=True):
+                # Expired token will be refreshed automatically (as `refresh=True`)
+                today = datetime.now()
+                recent_date = today - timedelta(days=recent_days)
 
-            self.log.debug(
-                "Trakt: Episodes watched in last " + str(recent_days) + " days:"
-            )
-            
-            # Authentication should be valid at this point due to ensure_valid_token() check
-            self.log.debug("Trakt: Proceeding with authenticated API calls")
-            
-            page = 1
-            id = None
-            while True:
-                episode_itr = None
-                try:
-                    self.log.debug(f"Trakt: Requesting shows history - page {page}, start_date: {recent_date}")
-                    episode_itr = Trakt["sync/history"].shows(
-                        start_at=recent_date, pagination=True, extended="full", per_page=10000, page=page, id=id
-                    )
-                    self.log.debug(f"Trakt: API response type: {type(episode_itr)}, response: {episode_itr}")
-                    
-                    if episode_itr and hasattr(episode_itr, 'total_pages'):
-                        self.log.debug(f"Trakt: Shows Page {page} of {episode_itr.total_pages}, items count: {len(list(episode_itr)) if hasattr(episode_itr, '__len__') else 'unknown'}")
-                    elif episode_itr:
-                        self.log.warning(f"Trakt: Response received but no total_pages attribute. Response type: {type(episode_itr)}, attributes: {dir(episode_itr)}")
-                    else:
-                        self.log.warning("Trakt: API returned None response")
-
-                except Exception as e:
-                    self.log.error(
-                        f"ERROR: Could not get episodes from Trakt. Error: {e}"
-                    )
+                self.log.debug(
+                    "Trakt: Episodes watched in last " + str(recent_days) + " days:"
+                )
+                
+                # Authentication should be valid at this point due to ensure_valid_token() check
+                self.log.debug("Trakt: Proceeding with authenticated API calls")
+                
+                page = 1
+                id = None
+                while True:
                     episode_itr = None
-                if not episode_itr:
-                    self.log.error("Trakt: No episodes found - this might be due to expired authentication")
-                    self.log.error("Trakt: Try deleting .auth.pkl file and re-running to re-authenticate")
-                    break
-                episode: Episode
-                for episode in episode_itr:
-                    # episode_dict = episode.to_dict()
-                    # ep_no = episode_dict["number"]
-                    # season_no = episode.season.pk
-                    # show_tvdb = episode.show.pk[1]
+                    try:
+                        self.log.debug(f"Trakt: Requesting shows history - page {page}, start_date: {recent_date}")
+                        episode_itr = Trakt["sync/history"].shows(
+                            start_at=recent_date, pagination=True, extended="full", per_page=10000, page=page, id=id
+                        )
+                        self.log.debug(f"Trakt: API response type: {type(episode_itr)}, response: {episode_itr}")
+                        
+                        if episode_itr and hasattr(episode_itr, 'total_pages'):
+                            self.log.debug(f"Trakt: Shows Page {page} of {episode_itr.total_pages}, items count: {len(list(episode_itr)) if hasattr(episode_itr, '__len__') else 'unknown'}")
+                        elif episode_itr:
+                            self.log.warning(f"Trakt: Response received but no total_pages attribute. Response type: {type(episode_itr)}, attributes: {dir(episode_itr)}")
+                        else:
+                            self.log.warning("Trakt: API returned None response")
 
-                    # if show_tvdb in series:
-                    #     # show_episodes_tvdbids[show_tvdb].append(episode_dict['ids']['tvdb'])
-                    #     series[show_tvdb].append([season_no, ep_no])
-                    # else:
-                    #     series[show_tvdb] = []
-                    #     series[show_tvdb].append([season_no, ep_no])
-                    show: Show = episode.show
-                    id = episode.id
-                    series.setdefault(f"{show.title} ({show.year})", []).append(episode)
+                    except Exception as e:
+                        self.log.error(
+                            f"ERROR: Could not get episodes from Trakt. Error: {e}"
+                        )
+                        episode_itr = None
+                    if not episode_itr:
+                        self.log.error("Trakt: No episodes found - this might be due to expired authentication")
+                        self.log.error("Trakt: Try deleting .auth.pkl file and re-running to re-authenticate")
+                        break
+                    episode: Episode
+                    for episode in episode_itr:
+                        show: Show = episode.show
+                        id = episode.id
+                        series.setdefault(f"{show.title} ({show.year})", []).append(episode)
 
-                    # episode_dict = episode.to_dict()
-                    # self.log.debug(
-                    #     episode.show.title
-                    #     + " - S"
-                    #     + str(episode.season.pk).zfill(2)
-                    #     + "E"
-                    #     + str(episode_dict["number"]).zfill(2)
-                    #     + ": "
-                    #     + episode_dict["title"]
-                    # )
-                page += 1
-                if episode_itr and hasattr(episode_itr, 'total_pages') and page > episode_itr.total_pages:
-                    break
+                    page += 1
+                    if episode_itr and hasattr(episode_itr, 'total_pages') and page > episode_itr.total_pages:
+                        break
+        except Exception as oauth_error:
+            self.log.error(f"OAuth configuration failed: {oauth_error}")
+            self.log.info("Token may be invalid, attempting to refresh authentication")
+            # Clear the token and try to re-authenticate
+            self.authorization = None
+            if self.ensure_valid_token():
+                # Retry the operation once with new token
+                return self.watched_series(recent_days)
+            return []
         if series:
             cache.set(cache_key, series, expire=WEEK_IN_SECONDS)
 
@@ -376,11 +421,14 @@ class TraktClient(object):
         # Acquire condition
         self.is_authenticating.acquire()
 
+        # Add created_at timestamp for proper expiry tracking
+        authorization['created_at'] = datetime.now().timestamp()
+        
         # Store authorization for future calls
         self.authorization = authorization
 
         # Save authorization to file
-        with open(os.path.join(sys.path[0], ".auth.pkl"), "wb") as f:
+        with open(self.auth_file_path, "wb") as f:
             pickle.dump(authorization, f, pickle.HIGHEST_PROTOCOL)
 
         self.log.debug(
@@ -413,13 +461,15 @@ class TraktClient(object):
 
     def on_token_refreshed(self, authorization):
         # OAuth token refreshed, store authorization for future calls
+        # Add created_at timestamp for proper expiry tracking
+        authorization['created_at'] = datetime.now().timestamp()
         self.authorization = authorization
 
         # Save refreshed token to file
         try:
-            with open(os.path.join(sys.path[0], ".auth.pkl"), "wb") as f:
+            with open(self.auth_file_path, "wb") as f:
                 pickle.dump(authorization, f, pickle.HIGHEST_PROTOCOL)
-            self.log.debug("Saved refreshed token to .auth.pkl")
+            self.log.debug(f"Saved refreshed token to {self.auth_file_path}")
         except Exception as e:
             self.log.error(f"Failed to save refreshed token: {e}")
 

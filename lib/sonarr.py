@@ -34,6 +34,10 @@ class Sonarr(object):
 
         # Look for recently watched episodes in Sonarr and change monitored to False
         sonarr_series = response.json()
+        monitored_series_count = sum(1 for show in sonarr_series if show.get("monitored"))
+        total_episodes = sum(len(episodes) for episodes in series.values())
+        self.log.info(f"Sonarr: Found {len(sonarr_series)} total series, {monitored_series_count} monitored")
+        self.log.info(f"Trakt: Processing {len(series)} watched shows with {total_episodes} episodes for unmonitoring")
         for t, episodes in series.items():
             show: Show = episodes[0].show
 
@@ -51,9 +55,7 @@ class Sonarr(object):
                     if (not sonarr_tvdb or show.keys[0][1] != sonarr_tvdb) and (
                         t != sonarr_show_title
                     ):
-                        self.log.debug(
-                            f"Skipping {show.title}, tvdb id: {show.keys[0][1]}, sonarr tvdb: {sonarr_tvdb}"
-                        )
+                        # Skip non-matching shows (no need to log each one)
                         continue
 
                 except Exception as e:
@@ -108,9 +110,7 @@ class Sonarr(object):
                             sonarr_epid = sonarr_episode["id"]
 
                             if trakt_season != sonarr_season or trakt_ep != sonarr_ep:
-                                self.log.debug(
-                                    f"Skipping {sonarr_show_title}, {trakt_season}x{trakt_ep}, {sonarr_season}x{sonarr_ep}"
-                                )
+                                # Skip non-matching episodes (no need to log each one)
                                 continue
 
                         except Exception as e:
